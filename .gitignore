@@ -1,0 +1,5 @@
+.DS_Store
+*.pyc
+ha/data/key.json
+*.txt
+HomeAssistant.egg-info/PKG-INFO
