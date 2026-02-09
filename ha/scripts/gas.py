@@ -47,7 +47,7 @@ else:
     os.environ["GRPC_DNS_RESOLVER"] = "native"
 
 
-def change_color(image_path, x, y, width, height, new_color):
+def change_color(image_path, x, y, width, height, new_color, target_path=None) -> str:
     # Open the image
     img = Image.open(image_path)
 
@@ -64,7 +64,8 @@ def change_color(image_path, x, y, width, height, new_color):
     img = img.convert("RGB")
 
     # Save or display the modified image
-    img.save(image_path, format="JPEG")
+    img.save(target_path or image_path, format="JPEG")
+    return target_path or image_path
 
 
 def get_color(image_path, x, y):
@@ -75,6 +76,52 @@ def get_color(image_path, x, y):
     color = img.getpixel((x, y))
 
     return color
+
+
+def crop_region(
+    image_path: str,
+    left: int,
+    top: int,
+    right: int,
+    bottom: int,
+    output_path: str | None = None,
+):
+    img = Image.open(image_path)
+    box = (left, top, right, bottom)
+    cropped = img.crop(box)
+    save_path = output_path or image_path
+    cropped.save(save_path)
+    return save_path
+
+
+def mask_and_crop_with_imagedraw(
+    image_path: str,
+    left: int,
+    top: int,
+    right: int,
+    bottom: int,
+    output_path: str | None = None,
+):
+    """
+    ImageDraw-lal maszkot rajzolunk a kivágandó téglalapra, majd a képet
+    maszkoljuk és a téglalapra vágjuk. Ez akkor hasznos, ha először a képen
+    vizuálisan ki akarod emelni a középső részt.
+
+    Megjegyzés: tényleges kivágásra az Image.crop a legegyszerűbb.
+    """
+    img = Image.open(image_path).convert("RGB")
+    mask = Image.new("L", img.size, 0)
+    draw = ImageDraw.Draw(mask)
+    draw.rectangle((left, top, right, bottom), fill=255)
+
+    # A maszkolással a téglalapon belüli részt tartjuk meg, a külsejét feketévé tesszük
+    black_bg = Image.new("RGB", img.size, (0, 0, 0))
+    masked = Image.composite(img, black_bg, mask)
+
+    cropped = masked.crop((left, top, right, bottom))
+    save_path = output_path or image_path
+    cropped.save(save_path)
+    return save_path, cropped.size
 
 
 class Fields(Enum):
@@ -132,7 +179,7 @@ class Vision:
         )
 
         image_path = full_image_path
-        change_color(
+        image_path = change_color(
             image_path,
             x=1090,
             y=1460,
@@ -140,12 +187,14 @@ class Vision:
             height=24,
             new_color=get_color(image_path, 1000, 1491),
         )  # Red color in RGBA format
-
+        image_path = crop_region(image_path, 750, 900, 1915, 1500, image_path)
         return image_path
 
     @classmethod
-    def read_value_from_img(cls, image_name):
-        path = cls.create_picture(image_name)
+    def read_value_from_img(
+        cls, image_name: str = None, image_path: str = None
+    ) -> float:
+        path = image_path or cls.create_picture(image_name)
         return cls.get_text(path)
 
 
@@ -208,8 +257,10 @@ class Gas(Vision):
     )
 
     @classmethod
-    def read_value_from_img(cls, path):
-        text = super().read_value_from_img(path)
+    def read_value_from_img(
+        cls, image_name: str = None, image_path: str = None
+    ) -> float:
+        text = super().read_value_from_img(image_name=image_name, image_path=image_path)
 
         text = text.replace(" ", "")
         text = text.replace(",", "")
@@ -227,7 +278,7 @@ class Gas(Vision):
         now = Utils.get_timestamp()
         image_name = now.strftime("%Y_%m_%d_%H_%M_%S") + ".jpg"
 
-        return cls.read_value_from_img(image_name)
+        return cls.read_value_from_img(image_name=image_name)
 
     @classmethod
     def publish_gas_stats(cls, topic: str = "", data: dict = {}):
@@ -314,6 +365,10 @@ class Gas(Vision):
             return past.year == now.year
 
         return False
+
+
+# x: 700, y: 1000
+# x: 1815, y: 1345
 
 
 Gas.mqtt.connect_mqtt()
