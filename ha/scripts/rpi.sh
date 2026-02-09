@@ -1,2 +1,1 @@
-cd /home/trenyik/Pictures
-python rpi.py >> log_rpi.txt
+python ~/git/ha/ha/scripts/rpi.py --send_data >> ~/git/ha/ha/scripts/log_rpi.txt

@@ -1,3 +1,20 @@
+"""
+python3 -m pip install --break-system-packages \
+  "google-cloud-vision==3.4.5" \
+  "google-api-core<2.18" \
+  "protobuf<4.21" \
+  "grpcio<1.60"
+
+
+sudo apt install -y imagemagick
+
+sudo tee /etc/tmpfiles.d/vision.conf <<'EOF'
+d /var/tmp/vision 0750 USERNAME USERNAME -
+e /var/tmp/vision - - - 7d
+EOF
+
+"""
+
 import io
 import os
 import re
@@ -17,10 +34,16 @@ from ha.mqtt.mqtt import MQTT
 from ha.utils.utils import Utils
 
 if os.name == "nt":
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_PATH", os.path.abspath( os.path.join(os.path.expanduser("~"), "data", "key.json") ) )
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.environ.get(
+        "GOOGLE_APPLICATION_CREDENTIALS_PATH",
+        os.path.abspath(os.path.join(os.path.expanduser("~"), "data", "key.json")),
+    )
 
 else:
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_PATH", os.path.abspath( os.path.join(os.path.expanduser("~"), "data", "key.json") ) )
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.environ.get(
+        "GOOGLE_APPLICATION_CREDENTIALS_PATH",
+        os.path.abspath(os.path.join(os.path.expanduser("~"), "data", "key.json")),
+    )
     os.environ["GRPC_DNS_RESOLVER"] = "native"
 
 
@@ -85,7 +108,10 @@ class Vision:
 
         if response.error.message:
             raise Exception(
-                "{}\nFor more info on error messages, check: " "https://cloud.google.com/apis/design/errors".format(response.error.message)
+                "{}\nFor more info on error messages, check: "
+                "https://cloud.google.com/apis/design/errors".format(
+                    response.error.message
+                )
             )
 
         text = response.full_text_annotation.text
@@ -96,11 +122,16 @@ class Vision:
     def create_picture(cls, image_name: str = ""):
         # negative
         # denoise
-        home_folder = os.path.expanduser("~")
-        print(f"raspistill -vf -hf -ifx negative -o {home_folder}/Pictures/{image_name}")
-        subprocess.call(f"raspistill -vf -hf -ifx negative -o {home_folder}/Pictures/{image_name}", shell=True)
+        full_image_path = os.path.abspath(os.path.join("/var/tmp/vision", image_name))
 
-        image_path = f"{home_folder}/Pictures/{image_name}"
+        cmd = f"rpicam-still -n --vflip --hflip -o - | convert - -negate {full_image_path}"
+        print(cmd)
+        subprocess.call(
+            cmd,
+            shell=True,
+        )
+
+        image_path = full_image_path
         change_color(
             image_path,
             x=1090,
@@ -110,7 +141,7 @@ class Vision:
             new_color=get_color(image_path, 1000, 1491),
         )  # Red color in RGBA format
 
-        return f"{home_folder}/Pictures/{image_name}"
+        return image_path
 
     @classmethod
     def read_value_from_img(cls, image_name):
@@ -138,7 +169,12 @@ class Gas(Vision):
             "name": "Gas - " + Utils.detect_model(),
             "manufacturer": "RPi",
             "model": Utils.detect_model(),
-            "identifiers": ["gas", Utils.get_mac_address(), Utils.detect_model(), Utils.get_host_name()],
+            "identifiers": [
+                "gas",
+                Utils.get_mac_address(),
+                Utils.detect_model(),
+                Utils.get_host_name(),
+            ],
         },
     }
 
@@ -151,19 +187,25 @@ class Gas(Vision):
     daily_config["name"] = "Gas Daily"
     daily_config["unique_id"] = "gas_daily"
     daily_config["state_class"] = "measurement"
-    daily_config["value_template"] = "{{ value_json." + f"{Fields.DAILY_USAGE.value}" + " }}"
+    daily_config["value_template"] = (
+        "{{ value_json." + f"{Fields.DAILY_USAGE.value}" + " }}"
+    )
 
     monthly_config = base_config.copy()
     monthly_config["name"] = "Gas Monthly"
     monthly_config["unique_id"] = "gas_monthly"
     monthly_config["state_class"] = "measurement"
-    monthly_config["value_template"] = "{{ value_json." + f"{Fields.MONTHLY_USAGE.value}" + " }}"
+    monthly_config["value_template"] = (
+        "{{ value_json." + f"{Fields.MONTHLY_USAGE.value}" + " }}"
+    )
 
     yearly_config = base_config.copy()
     yearly_config["name"] = "Gas Yearly"
     yearly_config["unique_id"] = "gas_yearly"
     yearly_config["state_class"] = "measurement"
-    yearly_config["value_template"] = "{{ value_json." + f"{Fields.YEARLY_USAGE.value}" + " }}"
+    yearly_config["value_template"] = (
+        "{{ value_json." + f"{Fields.YEARLY_USAGE.value}" + " }}"
+    )
 
     @classmethod
     def read_value_from_img(cls, path):
@@ -202,7 +244,6 @@ class Gas(Vision):
 
         if not -30 <= diff_between_measures < 30:
             print("Out of tolerance")
-            return
 
         daily_usage = (
             diff_between_measures
@@ -233,7 +274,9 @@ class Gas(Vision):
 
     @staticmethod
     def get_tolerance(last_value: dict = {}, diff_between_measures: float = 0.0):
-        last = datetime.strptime(last_value.get(Fields.TIMESTAMP.value), Utils.TIMESTAMP_FORMAT)
+        last = datetime.strptime(
+            last_value.get(Fields.TIMESTAMP.value), Utils.TIMESTAMP_FORMAT
+        )
         now = datetime.now()
 
         diff = float((now - last).total_seconds() / 3600)
@@ -246,7 +289,9 @@ class Gas(Vision):
 
     @classmethod
     def start_a_new_cycle(cls, dt_item: DT_ITEMS = DT_ITEMS.DAY, last_value: dict = {}):
-        last = datetime.strptime(last_value.get(Fields.TIMESTAMP.value), Utils.TIMESTAMP_FORMAT)
+        last = datetime.strptime(
+            last_value.get(Fields.TIMESTAMP.value), Utils.TIMESTAMP_FORMAT
+        )
         now = datetime.now()
 
         if cls.on_the_same_dt_item(dt_item, last, now):
@@ -256,7 +301,9 @@ class Gas(Vision):
             return True
 
     @classmethod
-    def on_the_same_dt_item(cls, dt_item: DT_ITEMS, past: datetime, now: datetime) -> bool:
+    def on_the_same_dt_item(
+        cls, dt_item: DT_ITEMS, past: datetime, now: datetime
+    ) -> bool:
         if dt_item == DT_ITEMS.DAY:
             return past.day == now.day
 

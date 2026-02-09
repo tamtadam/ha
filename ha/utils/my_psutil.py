@@ -2,8 +2,25 @@ import os
 import psutil
 from enum import Enum
 import datetime
+import time
 
 initial_net_io_counters = psutil.net_io_counters()
+
+
+def write_speed_test(path="/var/tmp/sd_speed.bin", mb=20) -> float:
+    if os.name == "nt":
+        path = os.path.join(os.getenv("TEMP", "C:\\Temp"), "sd_speed.bin")
+
+    data = b"x" * (1024 * 1024)
+    t0 = time.time()
+    with open(path, "wb") as f:
+        for _ in range(mb):
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+    t = time.time() - t0
+    os.remove(path)
+    return mb / t  # MB/s
 
 
 def iso_8601_utc_now(dt: datetime.datetime = datetime.datetime.utcnow()):
@@ -58,17 +75,17 @@ class Fields(Enum):
     CONTAINERS = "containers"
 
     PROCESSES = "processes"
+    SD_WRITE_SPEED = "sd_write_speed"
 
 
 class Mypsutil:
-
     @staticmethod
     def containers():
         try:
             import docker
         except ImportError:
             return {}
-        
+
         if os.name != "nt":
             client = docker.from_env()
             return {"running": len(client.containers.list())}
@@ -77,7 +94,6 @@ class Mypsutil:
 
     @staticmethod
     def cpu_temp():
-
         temps = {}
         temp_dict = {}
 
@@ -87,7 +103,7 @@ class Mypsutil:
                 return temps
 
             for i, e in enumerate(temps["cpu_thermal"]):
-                temp_dict.update({f"core_{ i + 1 }": e.current})
+                temp_dict.update({f"core_{i + 1}": e.current})
 
         return temp_dict
 
@@ -106,18 +122,31 @@ class Mypsutil:
                 proc.cpu_percent(interval=None)  # Frissítés
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 pass
- 
+
         processes_info = []
         for proc in processes:
             try:
-                info = proc.as_dict(attrs=["pid", "name", "cpu_percent", "memory_percent", "status", "username"])
+                info = proc.as_dict(
+                    attrs=[
+                        "pid",
+                        "name",
+                        "cpu_percent",
+                        "memory_percent",
+                        "status",
+                        "username",
+                    ]
+                )
                 if info.get("cpu_percent", 0) or 0 > 100:
-                    info["cpu_percent"] = info["cpu_percent"] / psutil.cpu_count()  # Normalizálás a magok számával
+                    info["cpu_percent"] = (
+                        info["cpu_percent"] / psutil.cpu_count()
+                    )  # Normalizálás a magok számával
                     processes_info.append(info)
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 pass
 
-        processes_info = sorted(processes_info, key=lambda proc: proc["cpu_percent"], reverse=True)
+        processes_info = sorted(
+            processes_info, key=lambda proc: proc["cpu_percent"], reverse=True
+        )
 
         top5_processes: list = []
         for i, proc in enumerate(processes_info[:5]):
@@ -156,7 +185,12 @@ class Mypsutil:
         available = round(disk.free / 1024.0 / 1024.0 / 1024.0, 1)
         total = round(disk.total / 1024.0 / 1024.0 / 1024.0, 1)
         used = round(disk.used / 1024.0 / 1024.0 / 1024.0, 1)
-        return {Fields.AVAILABLE.value: available, Fields.TOTAL.value: total, Fields.USED.value: used, Fields.PERCENT.value: disk.percent}
+        return {
+            Fields.AVAILABLE.value: available,
+            Fields.TOTAL.value: total,
+            Fields.USED.value: used,
+            Fields.PERCENT.value: disk.percent,
+        }
 
     @staticmethod
     def cpu_load():
@@ -180,16 +214,33 @@ class Mypsutil:
     def net_io_counters():
         global initial_net_io_counters
         net_io_counters = psutil.net_io_counters()
-        bytes_recv = round((net_io_counters.bytes_recv - initial_net_io_counters.bytes_recv) / 1024.0 / 1024.0, 1)
-        bytes_sent = round((net_io_counters.bytes_sent - initial_net_io_counters.bytes_sent) / 1024.0 / 1024.0, 1)
+        bytes_recv = round(
+            (net_io_counters.bytes_recv - initial_net_io_counters.bytes_recv)
+            / 1024.0
+            / 1024.0,
+            1,
+        )
+        bytes_sent = round(
+            (net_io_counters.bytes_sent - initial_net_io_counters.bytes_sent)
+            / 1024.0
+            / 1024.0,
+            1,
+        )
         initial_net_io_counters = net_io_counters
-        return {Fields.BYTES_RECV.value: bytes_recv, Fields.BYTES_SENT.value: bytes_sent}
+        return {
+            Fields.BYTES_RECV.value: bytes_recv,
+            Fields.BYTES_SENT.value: bytes_sent,
+        }
 
     @staticmethod
     def cpu_times_percent():
         cpu_times = psutil.cpu_times_percent()
         if os.name == "nt":
-            return {Fields.USER.value: cpu_times.user, Fields.SYSTEM.value: cpu_times.system, Fields.IDLE.value: cpu_times.idle}
+            return {
+                Fields.USER.value: cpu_times.user,
+                Fields.SYSTEM.value: cpu_times.system,
+                Fields.IDLE.value: cpu_times.idle,
+            }
 
         else:
             return {
@@ -197,13 +248,19 @@ class Mypsutil:
                 Fields.NICE.value: cpu_times.nice,
                 Fields.SYSTEM.value: cpu_times.system,
                 Fields.IDLE.value: cpu_times.idle,
-                Fields.IOWAIT.value: hasattr(cpu_times, "iowait") and cpu_times.iowait or 0,
+                Fields.IOWAIT.value: hasattr(cpu_times, "iowait")
+                and cpu_times.iowait
+                or 0,
             }
 
     @staticmethod
     def cpu_percent():
         cpu_percent = psutil.cpu_percent()
         return {Fields.CPU_PERCENT.value: cpu_percent}
+
+    @staticmethod
+    def write_speed():
+        return {Fields.TOTAL.value: write_speed_test()}
 
     @classmethod
     def get_all_stat(cls):
@@ -219,7 +276,9 @@ class Mypsutil:
             Fields.TIMESTAMP.value: iso_8601_utc_now(),
             Fields.CONTAINERS.value: cls.containers(),
             Fields.PROCESSES.value: cls.processes(),
+            Fields.SD_WRITE_SPEED.value: cls.write_speed(),
         }
+
 
 if __name__ == "__main__":
     import json
