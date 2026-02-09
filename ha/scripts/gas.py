@@ -242,9 +242,9 @@ class Gas(Vision):
 
         print(f"last:{last_value}, actual:{actual_value}, diff:{diff_between_measures}")
 
-        if not -30 <= diff_between_measures < 30:
+        if not -15 <= diff_between_measures < 15:
             print("Out of tolerance")
-
+            return 0
         daily_usage = (
             diff_between_measures
             if cls.start_a_new_cycle(DT_ITEMS.DAY, last_value)
