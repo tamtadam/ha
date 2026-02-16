@@ -255,8 +255,7 @@ class Mypsutil:
 
     @staticmethod
     def cpu_percent():
-        cpu_percent = psutil.cpu_percent()
-        return {Fields.CPU_PERCENT.value: cpu_percent}
+        return psutil.cpu_percent()
 
     @staticmethod
     def write_speed():
@@ -265,10 +264,12 @@ class Mypsutil:
     @classmethod
     def get_all_stat(cls):
         return {
-            Fields.TEMPERATURE.value: {Fields.CPU.value: cls.cpu_temp()},
             Fields.CPU_FREQ.value: cls.cpu_freq(),
             Fields.CPU_TIMES_PERCENT.value: cls.cpu_times_percent(),
-            Fields.CPU_PERCENT.value: cls.cpu_percent(),
+            Fields.CPU.value: {
+                Fields.TEMPERATURE.value: cls.cpu_temp(),
+                Fields.PERCENT.value: cls.cpu_percent(),
+            },
             Fields.LOAD.value: cls.cpu_load(),
             Fields.DISK.value: cls.disk_info(),
             Fields.MEMORY.value: cls.memory(),

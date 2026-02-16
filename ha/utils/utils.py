@@ -14,6 +14,7 @@ class Utils:
     def get_host_name():
         return Utils.HOSTNAME or socket.gethostname() or "rpi"
 
+    @staticmethod
     def get_mac_address():
         if os.name == "nt":
             mac = Utils.MAC_ADDRESS or psutil.net_if_addrs()["Wi-Fi"][0].address
@@ -22,12 +23,14 @@ class Utils:
             mac = list(
                 filter(
                     lambda item: item.family == psutil.AF_LINK and item.address,
-                    psutil.net_if_addrs()["wlan0"],
+                    psutil.net_if_addrs().get("eth0", None)
+                    or psutil.net_if_addrs().get("wlan0", None),
                 )
             )[0].address
             mac = Utils.MAC_ADDRESS or mac
             return mac.replace(":", "")
 
+    @staticmethod
     def detect_model() -> str:
         if os.name == "nt":
             return Utils.MODEL or "MODEL"
@@ -44,3 +47,11 @@ class Utils:
     @staticmethod
     def get_formatted_timestamp():
         return Utils.get_timestamp().strftime(Utils.TIMESTAMP_FORMAT)
+
+    @staticmethod
+    def NAME():
+        return f"{Utils.get_host_name()}_{Utils.get_mac_address()}"
+
+    @staticmethod
+    def get_unique_id(fields: list[str]) -> str:
+        return f"{Utils.get_host_name()}_{'_'.join(fields)}"

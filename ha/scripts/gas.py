@@ -267,10 +267,10 @@ class Gas(Vision):
         text = text.replace("-", "")
         print(text)
 
-        meter = re.findall("0(\d\d\d\d.?\d\d?\d?.?)m?", text)[0]
-        meter = "".join(re.findall("\d", meter))
+        meter = re.findall(r"0(\d\d\d\d.?\d\d?\d?.?)m?", text)[0]
+        meter = "".join(re.findall(r"\d", meter))
         print("meter: " + meter)
-        meter = re.findall("(\d\d\d\d)(\d\d?\d?)", meter)[0]
+        meter = re.findall(r"(\d\d\d\d)(\d\d?\d?)", meter)[0]
         return float(int(meter[0]) + (int(meter[1]) / math.pow(10, len(meter[1]))))
 
     @classmethod
@@ -296,6 +296,7 @@ class Gas(Vision):
         if not -15 <= diff_between_measures < 15:
             print("Out of tolerance")
             return 0
+
         daily_usage = (
             diff_between_measures
             if cls.start_a_new_cycle(DT_ITEMS.DAY, last_value)
@@ -367,16 +368,16 @@ class Gas(Vision):
         return False
 
 
-# x: 700, y: 1000
-# x: 1815, y: 1345
+if __name__ == "__main__":
+    # x: 700, y: 1000
+    # x: 1815, y: 1345
 
+    Gas.mqtt.connect_mqtt()
 
-Gas.mqtt.connect_mqtt()
+    # Gas.mqtt.publish( "homeassistant/sensor/gas/total_usage/config", json.dumps( Gas.total_config ) )
+    # Gas.mqtt.publish( "homeassistant/sensor/gas/daily_usage/config", json.dumps( Gas.daily_config ) )
+    # Gas.mqtt.publish( "homeassistant/sensor/gas/monthly_usage/config", json.dumps( Gas.monthly_config ) )
+    # Gas.mqtt.publish( "homeassistant/sensor/gas/yearly_usage/config", json.dumps( Gas.yearly_config ) )
 
-# Gas.mqtt.publish( "homeassistant/sensor/gas/total_usage/config", json.dumps( Gas.total_config ) )
-# Gas.mqtt.publish( "homeassistant/sensor/gas/daily_usage/config", json.dumps( Gas.daily_config ) )
-# Gas.mqtt.publish( "homeassistant/sensor/gas/monthly_usage/config", json.dumps( Gas.monthly_config ) )
-# Gas.mqtt.publish( "homeassistant/sensor/gas/yearly_usage/config", json.dumps( Gas.yearly_config ) )
-
-Gas.publish_gas_stats()
-Gas.mqtt.disconnect()
+    Gas.publish_gas_stats()
+    Gas.mqtt.disconnect()
