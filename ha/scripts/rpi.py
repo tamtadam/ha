@@ -1,11 +1,28 @@
 import json
 import argparse
 import logging
+from enum import StrEnum
 from ha.mqtt.mqtt import MQTT
 from ha.utils.utils import Utils
 from ha.utils.my_psutil import Mypsutil, Fields
 
 logger = logging.getLogger(__name__)
+
+
+# Mirrors homeassistant.const — values must match exactly for HA compatibility
+class UnitOfTemperature(StrEnum):
+    CELSIUS = "°C"
+
+
+class UnitOfInformation(StrEnum):
+    GIGABYTES = "GB"
+
+
+class UnitOfDataRate(StrEnum):
+    MEGABYTES_PER_SECOND = "MB/s"
+
+
+PERCENTAGE = "%"
 
 
 def flat_dict(d: dict, parent_key: str = "", sep: str = ".") -> dict:
@@ -60,11 +77,11 @@ class SensorConfig:
 class RPi:
     @staticmethod
     def make_sensors() -> list[SensorConfig]:
-        core1 = SensorConfig("Core1 Temp", [Fields.CPU, Fields.TEMPERATURE, Fields.CORE_1], "°C", "temperature")
-        disk_total = SensorConfig("Disk Total", [Fields.DISK, Fields.TOTAL], "GB")
-        memory_total = SensorConfig("Memory Total", [Fields.MEMORY, Fields.TOTAL], "GB")
-        load_c_1 = SensorConfig("Load 1min", [Fields.LOAD, Fields.MIN_1], "%")
-        sd_hc = SensorConfig("Write Speed", [Fields.SD_WRITE_SPEED, Fields.TOTAL], "MB/s")
+        core1 = SensorConfig("Core1 Temp", [Fields.CPU, Fields.TEMPERATURE, Fields.CORE_1], UnitOfTemperature.CELSIUS, "temperature")
+        disk_total = SensorConfig("Disk Total", [Fields.DISK, Fields.TOTAL], UnitOfInformation.GIGABYTES)
+        memory_total = SensorConfig("Memory Total", [Fields.MEMORY, Fields.TOTAL], UnitOfInformation.GIGABYTES)
+        load_c_1 = SensorConfig("Load 1min", [Fields.LOAD, Fields.MIN_1], PERCENTAGE)
+        sd_hc = SensorConfig("Write Speed", [Fields.SD_WRITE_SPEED, Fields.TOTAL], UnitOfDataRate.MEGABYTES_PER_SECOND)
 
         return [
             core1,
@@ -74,15 +91,15 @@ class RPi:
 
             disk_total,
             SensorConfig("Disk Available", [Fields.DISK, Fields.AVAILABLE], source=disk_total),
-            SensorConfig("Disk Used", [Fields.DISK, Fields.USED], "%"),
-            SensorConfig("Disk Used Percent", [Fields.DISK, Fields.PERCENT], "%"),
+            SensorConfig("Disk Used", [Fields.DISK, Fields.USED], PERCENTAGE),
+            SensorConfig("Disk Used Percent", [Fields.DISK, Fields.PERCENT], PERCENTAGE),
 
             memory_total,
             SensorConfig("Memory Available", [Fields.MEMORY, Fields.AVAILABLE], source=memory_total),
-            SensorConfig("Memory Used", [Fields.MEMORY, Fields.USED], "%"),
-            SensorConfig("Memory Used Percent", [Fields.MEMORY, Fields.PERCENT], "%"),
+            SensorConfig("Memory Used", [Fields.MEMORY, Fields.USED], PERCENTAGE),
+            SensorConfig("Memory Used Percent", [Fields.MEMORY, Fields.PERCENT], PERCENTAGE),
 
-            SensorConfig("CPU Used Percent", [Fields.CPU, Fields.PERCENT], "%"),
+            SensorConfig("CPU Used Percent", [Fields.CPU, Fields.PERCENT], PERCENTAGE),
 
             load_c_1,
             SensorConfig("Load 5min", [Fields.LOAD, Fields.MIN_5], source=load_c_1),
