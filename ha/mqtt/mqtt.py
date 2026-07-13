@@ -1,3 +1,5 @@
+from typing import Any
+
 from paho.mqtt import client as mqtt_client
 import paho.mqtt.subscribe as subscribe
 import json
@@ -13,7 +15,7 @@ class MQTT:
         username: str = os.environ.get("MQTT_USERNAME", "geza"),
         password: str = os.environ.get("MQTT_PASSWORD", "1234"),
         topic: str = None,
-    ):
+    ) -> None:
         self.broker = broker
         self.port = port
         self.client_name = client_name
@@ -23,11 +25,11 @@ class MQTT:
         self.topic = topic
 
     @property
-    def topic(self):
+    def topic(self) -> str | None:
         return self._topic
 
     @topic.setter
-    def topic(self, topic: str):
+    def topic(self, topic: str) -> None:
         self._topic = topic
 
     @property
@@ -35,65 +37,64 @@ class MQTT:
         return self._client
 
     @client.setter
-    def client(self, client: mqtt_client.Client):
+    def client(self, client: mqtt_client.Client) -> None:
         self._client = client
 
     @property
-    def username(self):
+    def username(self) -> str:
         return self._username
 
     @username.setter
-    def username(self, username):
+    def username(self, username: str) -> None:
         self._username = username
 
     @property
-    def broker(self):
+    def broker(self) -> str:
         return self._broker
 
     @broker.setter
-    def broker(self, broker):
+    def broker(self, broker: str) -> None:
         self._broker = broker
 
     @property
-    def port(self):
+    def port(self) -> int:
         return self._port
 
     @port.setter
-    def port(self, port):
+    def port(self, port: int) -> None:
         self._port = port
 
     @property
-    def client_name(self):
+    def client_name(self) -> str:
         return self._client_name
 
     @client_name.setter
-    def client_name(self, client_name):
+    def client_name(self, client_name: str) -> None:
         self._client_name = client_name
 
     @property
-    def password(self):
+    def password(self) -> str:
         return self._password
 
     @password.setter
-    def password(self, password):
+    def password(self, password: str) -> None:
         self._password = password
 
     @property
-    def client_id(self):
+    def client_id(self) -> str | None:
         return self._client_id
 
     @client_id.setter
-    def client_id(self, client_name):
+    def client_id(self, _client_name: str | None) -> None:
         self._client_id = f"{self.client_name}"
 
-    def disconnect(self):
+    def disconnect(self) -> None:
         self.client.disconnect()
 
     def connect_mqtt(self) -> mqtt_client.Client:
-        def on_connect(client, userdata, flags, rc):
+        def on_connect(_client: mqtt_client.Client, _userdata: Any, _flags: dict, rc: int) -> None:
             if rc == 0:
                 print("Connected to MQTT Broker!")
-
             else:
                 print("Failed to connect, return code %d\n", rc)
 
@@ -106,7 +107,7 @@ class MQTT:
 
         return self.client
 
-    def publish(self, topic, msg, retain=True):
+    def publish(self, topic: str, msg: str, retain: bool = True) -> None:
         msg_count = 0
         result = self.client.publish(topic, msg, retain=retain)
 
@@ -115,14 +116,13 @@ class MQTT:
 
         if status == 0:
             print(f"Send `{msg}` to topic `{topic}`")
-
         else:
             print(f"Failed to send message to topic {topic}")
 
         msg_count += 1
 
-    def subscribe(self, topic: str = ""):
-        def on_message(client: mqtt_client.Client, userdata, msg):
+    def subscribe(self, topic: str = "") -> None:
+        def on_message(_client: mqtt_client.Client, _userdata: Any, msg: mqtt_client.MQTTMessage) -> None:
             print(f"Received `{msg.payload.decode()}` from `{msg.topic}` topic")
 
         self.client.subscribe(topic or self.topic)

@@ -143,7 +143,7 @@ class RPi:
     )
 
     @classmethod
-    def publish_data(cls):
+    def publish_data(cls) -> None:
         data = Mypsutil.get_all_stat()
         print(cls.topic, data)
 

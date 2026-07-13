@@ -59,11 +59,11 @@ class MetricsLogic:
 
 
 class SystemMetricsApp(hass.Hass):
-    def initialize(self):
+    def initialize(self) -> None:
         self.log(f"SystemMetricsApp started for {Utils.NAME()}")
         self.run_every(self.publish_metrics, "now", 600)
 
-    def publish_metrics(self, kwargs):
+    def publish_metrics(self, _kwargs: dict) -> None:
         data = MetricsLogic.collect_metrics()
         self.log(f"Collected {len(data)} metrics, publishing...")
         for entity_id, state in MetricsLogic.to_sensor_states(data):

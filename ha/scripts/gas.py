@@ -47,7 +47,7 @@ else:
     os.environ["GRPC_DNS_RESOLVER"] = "native"
 
 
-def change_color(image_path, x, y, width, height, new_color, target_path=None) -> str:
+def change_color(image_path: str, x: int, y: int, width: int, height: int, new_color: tuple, target_path: str | None = None) -> str:
     # Open the image
     img = Image.open(image_path)
 
@@ -68,14 +68,9 @@ def change_color(image_path, x, y, width, height, new_color, target_path=None) -
     return target_path or image_path
 
 
-def get_color(image_path, x, y):
-    # Open the image
+def get_color(image_path: str, x: int, y: int) -> tuple:
     img = Image.open(image_path)
-
-    # Get the color at the specified coordinates (x, y)
-    color = img.getpixel((x, y))
-
-    return color
+    return img.getpixel((x, y))
 
 
 def crop_region(
@@ -85,7 +80,7 @@ def crop_region(
     right: int,
     bottom: int,
     output_path: str | None = None,
-):
+) -> str:
     img = Image.open(image_path)
     box = (left, top, right, bottom)
     cropped = img.crop(box)
@@ -101,7 +96,7 @@ def mask_and_crop_with_imagedraw(
     right: int,
     bottom: int,
     output_path: str | None = None,
-):
+) -> str:
     """
     ImageDraw-lal maszkot rajzolunk a kivágandó téglalapra, majd a képet
     maszkoljuk és a téglalapra vágjuk. Ez akkor hasznos, ha először a képen
@@ -161,12 +156,10 @@ class Vision:
                 )
             )
 
-        text = response.full_text_annotation.text
-
-        return text
+        return response.full_text_annotation.text
 
     @classmethod
-    def create_picture(cls, image_name: str = ""):
+    def create_picture(cls, image_name: str = "") -> str:
         # negative
         # denoise
         full_image_path = os.path.abspath(os.path.join("/var/tmp/vision", image_name))
@@ -187,8 +180,7 @@ class Vision:
             height=24,
             new_color=get_color(image_path, 1000, 1491),
         )  # Red color in RGBA format
-        image_path = crop_region(image_path, 750, 900, 1915, 1500, image_path)
-        return image_path
+        return crop_region(image_path, 750, 900, 1915, 1500, image_path)
 
     @classmethod
     def read_value_from_img(
@@ -281,15 +273,13 @@ class Gas(Vision):
         return cls.read_value_from_img(image_name=image_name)
 
     @classmethod
-    def publish_gas_stats(cls, topic: str = "", data: dict = {}):
+    def publish_gas_stats(cls, topic: str = "", data: dict = {}) -> int | None:
         now = Utils.get_timestamp()
 
         last_value = cls.get_last_value()
 
         actual_value = cls.read_value_from_gas_meter()
         diff_between_measures = actual_value - last_value.get(Fields.TOTAL.value, "0")
-
-        tolerance = cls.get_tolerance(last_value, diff_between_measures)
 
         print(f"last:{last_value}, actual:{actual_value}, diff:{diff_between_measures}")
 
@@ -323,9 +313,10 @@ class Gas(Vision):
 
         print(topic, data)
         cls.mqtt.publish(topic=topic or cls.topic, msg=json.dumps(data))
+        return None
 
     @staticmethod
-    def get_tolerance(last_value: dict = {}, diff_between_measures: float = 0.0):
+    def get_tolerance(last_value: dict = {}, _diff_between_measures: float = 0.0) -> float:
         last = datetime.strptime(
             last_value.get(Fields.TIMESTAMP.value), Utils.TIMESTAMP_FORMAT
         )
@@ -340,7 +331,7 @@ class Gas(Vision):
         return cls.mqtt.get_last_message(cls.topic)
 
     @classmethod
-    def start_a_new_cycle(cls, dt_item: DT_ITEMS = DT_ITEMS.DAY, last_value: dict = {}):
+    def start_a_new_cycle(cls, dt_item: DT_ITEMS = DT_ITEMS.DAY, last_value: dict = {}) -> bool:
         last = datetime.strptime(
             last_value.get(Fields.TIMESTAMP.value), Utils.TIMESTAMP_FORMAT
         )
@@ -349,8 +340,7 @@ class Gas(Vision):
         if cls.on_the_same_dt_item(dt_item, last, now):
             return False
 
-        else:
-            return True
+        return True
 
     @classmethod
     def on_the_same_dt_item(
@@ -359,10 +349,10 @@ class Gas(Vision):
         if dt_item == DT_ITEMS.DAY:
             return past.day == now.day
 
-        elif dt_item == DT_ITEMS.MONTH:
+        if dt_item == DT_ITEMS.MONTH:
             return past.month == now.month
 
-        elif dt_item == DT_ITEMS.YEAR:
+        if dt_item == DT_ITEMS.YEAR:
             return past.year == now.year
 
         return False

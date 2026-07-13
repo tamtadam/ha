@@ -7,7 +7,7 @@ import time
 initial_net_io_counters = psutil.net_io_counters()
 
 
-def write_speed_test(path="/var/tmp/sd_speed.bin", mb=20) -> float:
+def write_speed_test(path: str = "/var/tmp/sd_speed.bin", mb: int = 20) -> float:
     if os.name == "nt":
         path = os.path.join(os.getenv("TEMP", "C:\\Temp"), "sd_speed.bin")
 
@@ -23,7 +23,7 @@ def write_speed_test(path="/var/tmp/sd_speed.bin", mb=20) -> float:
     return mb / t  # MB/s
 
 
-def iso_8601_utc_now(dt: datetime.datetime = datetime.datetime.utcnow()):
+def iso_8601_utc_now(dt: datetime.datetime = datetime.datetime.utcnow()) -> str:
     current_datetime_utc = dt
     return current_datetime_utc.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
@@ -80,7 +80,7 @@ class Fields(Enum):
 
 class Mypsutil:
     @staticmethod
-    def containers():
+    def containers() -> dict:
         try:
             import docker
         except ImportError:
@@ -89,11 +89,10 @@ class Mypsutil:
         if os.name != "nt":
             client = docker.from_env()
             return {"running": len(client.containers.list())}
-        else:
-            return {}
+        return {}
 
     @staticmethod
-    def cpu_temp():
+    def cpu_temp() -> dict:
         temps = {}
         temp_dict = {}
 
@@ -108,7 +107,7 @@ class Mypsutil:
         return temp_dict
 
     @staticmethod
-    def processes():
+    def processes() -> list:
         import time
 
         processes = []
@@ -149,7 +148,7 @@ class Mypsutil:
         )
 
         top5_processes: list = []
-        for i, proc in enumerate(processes_info[:5]):
+        for proc in processes_info[:5]:
             top5_processes.append(
                 {
                     "pid": proc["pid"],
@@ -164,7 +163,7 @@ class Mypsutil:
         return top5_processes
 
     @staticmethod
-    def memory():
+    def memory() -> dict[str, float]:
         memory = psutil.virtual_memory()
 
         available = round(memory.available / 1024.0 / 1024.0 / 1024.0, 1)
@@ -179,7 +178,7 @@ class Mypsutil:
         }
 
     @staticmethod
-    def disk_info():
+    def disk_info() -> dict[str, float]:
         disk = psutil.disk_usage("/")
 
         available = round(disk.free / 1024.0 / 1024.0 / 1024.0, 1)
@@ -193,7 +192,7 @@ class Mypsutil:
         }
 
     @staticmethod
-    def cpu_load():
+    def cpu_load() -> dict[str, float]:
         loads = psutil.getloadavg()
         return {
             Fields.MIN_1.value: loads[0] / psutil.cpu_count(),
@@ -202,7 +201,7 @@ class Mypsutil:
         }
 
     @staticmethod
-    def cpu_freq():
+    def cpu_freq() -> dict[str, float]:
         cpu_freq = psutil.cpu_freq()
         return {
             Fields.CURRENT.value: cpu_freq.current,
@@ -211,7 +210,7 @@ class Mypsutil:
         }
 
     @staticmethod
-    def net_io_counters():
+    def net_io_counters() -> dict[str, float]:
         global initial_net_io_counters
         net_io_counters = psutil.net_io_counters()
         bytes_recv = round(
@@ -233,7 +232,7 @@ class Mypsutil:
         }
 
     @staticmethod
-    def cpu_times_percent():
+    def cpu_times_percent() -> dict[str, float]:
         cpu_times = psutil.cpu_times_percent()
         if os.name == "nt":
             return {
@@ -242,27 +241,26 @@ class Mypsutil:
                 Fields.IDLE.value: cpu_times.idle,
             }
 
-        else:
-            return {
-                Fields.USER.value: cpu_times.user,
-                Fields.NICE.value: cpu_times.nice,
-                Fields.SYSTEM.value: cpu_times.system,
-                Fields.IDLE.value: cpu_times.idle,
-                Fields.IOWAIT.value: hasattr(cpu_times, "iowait")
-                and cpu_times.iowait
-                or 0,
-            }
+        return {
+            Fields.USER.value: cpu_times.user,
+            Fields.NICE.value: cpu_times.nice,
+            Fields.SYSTEM.value: cpu_times.system,
+            Fields.IDLE.value: cpu_times.idle,
+            Fields.IOWAIT.value: hasattr(cpu_times, "iowait")
+            and cpu_times.iowait
+            or 0,
+        }
 
     @staticmethod
-    def cpu_percent():
+    def cpu_percent() -> float:
         return psutil.cpu_percent()
 
     @staticmethod
-    def write_speed():
+    def write_speed() -> dict[str, float]:
         return {Fields.TOTAL.value: write_speed_test()}
 
     @classmethod
-    def get_all_stat(cls):
+    def get_all_stat(cls) -> dict:
         return {
             Fields.CPU_FREQ.value: cls.cpu_freq(),
             Fields.CPU_TIMES_PERCENT.value: cls.cpu_times_percent(),
