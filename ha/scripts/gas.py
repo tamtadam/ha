@@ -20,7 +20,10 @@ import os
 import re
 import math
 import subprocess
+import argparse
 import json
+import logging
+import tempfile
 
 from PIL import Image, ImageDraw
 from enum import Enum, auto
@@ -30,8 +33,10 @@ from enum import Enum, auto
 
 from google.cloud import vision
 from datetime import datetime
-from ha.mqtt.mqtt import MQTT
-from ha.utils.utils import Utils
+from ha.publishers.base_sensor_publisher import BaseSensorPublisher
+from ha.utils.utils import Utils, SensorConfig
+
+logger = logging.getLogger(__name__)
 
 if os.name == "nt":
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.environ.get(
@@ -135,7 +140,31 @@ class DT_ITEMS(Enum):
 
 
 class Vision:
-    client = vision.ImageAnnotatorClient()
+    vision_client = vision.ImageAnnotatorClient()
+
+    @staticmethod
+    def create_latest_symlink(image_path: str) -> str:
+        image_path = os.path.abspath(image_path)
+        if not os.path.isfile(image_path):
+            raise FileNotFoundError(image_path)
+
+        latest_path = "/var/tmp/vision/latest.jpg"
+        latest_dir = os.path.dirname(latest_path)
+        os.makedirs(latest_dir, exist_ok=True)
+        if os.path.lexists(latest_path) and not os.path.islink(latest_path):
+            raise FileExistsError(f"Refusing to replace non-symlink: {latest_path}")
+
+        temp_fd, temp_path = tempfile.mkstemp(prefix=".latest.jpg.", dir=latest_dir)
+        os.close(temp_fd)
+        os.unlink(temp_path)
+        try:
+            os.symlink(image_path, temp_path)
+            os.replace(temp_path, latest_path)
+        finally:
+            if os.path.lexists(temp_path):
+                os.unlink(temp_path)
+
+        return latest_path
 
     @classmethod
     def get_text(cls, path: str = "change_me.jpg") -> str:
@@ -146,14 +175,11 @@ class Vision:
 
         image = vision.Image(content=content)
 
-        response = cls.client.text_detection(image=image)
+        response = cls.vision_client.text_detection(image=image)
 
         if response.error.message:
             raise Exception(
-                "{}\nFor more info on error messages, check: "
-                "https://cloud.google.com/apis/design/errors".format(
-                    response.error.message
-                )
+                "{}\nFor more info on error messages, check: https://cloud.google.com/apis/design/errors".format(response.error.message)
             )
 
         return response.full_text_annotation.text
@@ -164,7 +190,7 @@ class Vision:
         # denoise
         full_image_path = os.path.abspath(os.path.join("/var/tmp/vision", image_name))
 
-        cmd = f"rpicam-still -n --vflip --hflip -o - | convert - -negate {full_image_path}"
+        cmd = f"rpicam-still -n -o - | convert - -negate {full_image_path}"
         print(cmd)
         subprocess.call(
             cmd,
@@ -180,12 +206,12 @@ class Vision:
             height=24,
             new_color=get_color(image_path, 1000, 1491),
         )  # Red color in RGBA format
-        return crop_region(image_path, 750, 900, 1915, 1500, image_path)
+        image_path = crop_region(image_path, 780, 990, 2020, 1230, image_path)
+        cls.create_latest_symlink(image_path)
+        return image_path
 
     @classmethod
-    def read_value_from_img(
-        cls, image_name: str = None, image_path: str = None
-    ) -> float:
+    def read_value_from_img(cls, image_name: str = None, image_path: str = None) -> float:
         path = image_path or cls.create_picture(image_name)
         return cls.get_text(path)
 
@@ -193,75 +219,81 @@ class Vision:
 NAME = f"{Utils.get_host_name()}_{Utils.get_mac_address()}"
 
 
-class Gas(Vision):
-    mqtt = MQTT(client_name=NAME)
-
+class Gas(BaseSensorPublisher, Vision):
     topic = "rpi/sensors/gas"
-    base_config = {
-        "name": "Gas Daily",
-        "unique_id": "gas_daily",
-        "state_class": "total_increasing",
-        "device_class": "gas",
-        "unit_of_measurement": "m³",
-        "state_topic": "rpi/sensors/gas",
-        "platform": "mqtt",
-        "value_template": "{{ value_json." + f"{Fields.TOTAL.value}" + " }}",
-        "device": {
-            "name": "Gas - " + Utils.detect_model(),
-            "manufacturer": "RPi",
-            "model": Utils.detect_model(),
-            "identifiers": [
-                "gas",
-                Utils.get_mac_address(),
-                Utils.detect_model(),
-                Utils.get_host_name(),
-            ],
-        },
-    }
-
-    total_config = base_config.copy()
-    total_config["name"] = "Gas Total"
-    total_config["unique_id"] = "gas_total"
-    total_config["value_template"] = "{{ value_json." + f"{Fields.TOTAL.value}" + " }}"
-
-    daily_config = base_config.copy()
-    daily_config["name"] = "Gas Daily"
-    daily_config["unique_id"] = "gas_daily"
-    daily_config["state_class"] = "measurement"
-    daily_config["value_template"] = (
-        "{{ value_json." + f"{Fields.DAILY_USAGE.value}" + " }}"
+    base_config = SensorConfig(
+        "Gas Daily",
+        [Fields.TOTAL],
+        unit="m³",
+        device_class="gas",
+        state_topic=topic,
+        state_class="total_increasing",
+        device_name="Gas - " + Utils.detect_model(),
+        identifiers=[
+            "gas",
+            Utils.get_mac_address(),
+            Utils.detect_model(),
+            Utils.get_host_name(),
+        ],
+        include_host_name=False,
     )
 
-    monthly_config = base_config.copy()
-    monthly_config["name"] = "Gas Monthly"
-    monthly_config["unique_id"] = "gas_monthly"
-    monthly_config["state_class"] = "measurement"
-    monthly_config["value_template"] = (
-        "{{ value_json." + f"{Fields.MONTHLY_USAGE.value}" + " }}"
+    total_config = SensorConfig(
+        "Gas Total",
+        [Fields.TOTAL],
+        source=base_config,
+        state_class="total_increasing",
+        include_host_name=False,
+    )
+    daily_config = SensorConfig(
+        "Gas Daily",
+        [Fields.DAILY_USAGE],
+        source=base_config,
+        state_class="measurement",
+        include_host_name=False,
+    )
+    monthly_config = SensorConfig(
+        "Gas Monthly",
+        [Fields.MONTHLY_USAGE],
+        source=base_config,
+        state_class="measurement",
+        include_host_name=False,
+    )
+    yearly_config = SensorConfig(
+        "Gas Yearly",
+        [Fields.YEARLY_USAGE],
+        source=base_config,
+        state_class="measurement",
+        include_host_name=False,
     )
 
-    yearly_config = base_config.copy()
-    yearly_config["name"] = "Gas Yearly"
-    yearly_config["unique_id"] = "gas_yearly"
-    yearly_config["state_class"] = "measurement"
-    yearly_config["value_template"] = (
-        "{{ value_json." + f"{Fields.YEARLY_USAGE.value}" + " }}"
-    )
+    sensor_configs = [total_config, daily_config, monthly_config, yearly_config]
+
+    def __init__(self) -> None:
+        super().__init__(
+            client_name=NAME,
+            topic=type(self).topic,
+            sensors=type(self).sensor_configs,
+        )
+
+    def get_config_topic(self, sensor: SensorConfig) -> str:
+        return f"homeassistant/sensor/gas/{sensor.unique_id}/config"
+
+    def publish_data(self, topic: str, data: dict) -> None:
+        super().publish_data(topic, data)
 
     @classmethod
-    def read_value_from_img(
-        cls, image_name: str = None, image_path: str = None
-    ) -> float:
+    def read_value_from_img(cls, image_name: str = None, image_path: str = None) -> float:
         text = super().read_value_from_img(image_name=image_name, image_path=image_path)
 
         text = text.replace(" ", "")
         text = text.replace(",", "")
         text = text.replace("-", "")
-        print(text)
+        logger.debug("OCR text: %s", text)
 
         meter = re.findall(r"0(\d\d\d\d.?\d\d?\d?.?)m?", text)[0]
         meter = "".join(re.findall(r"\d", meter))
-        print("meter: " + meter)
+        logger.debug("Parsed meter: %s", meter)
         meter = re.findall(r"(\d\d\d\d)(\d\d?\d?)", meter)[0]
         return float(int(meter[0]) + (int(meter[1]) / math.pow(10, len(meter[1]))))
 
@@ -272,34 +304,33 @@ class Gas(Vision):
 
         return cls.read_value_from_img(image_name=image_name)
 
-    @classmethod
-    def publish_gas_stats(cls, topic: str = "", data: dict = {}) -> int | None:
+    def publish_gas_stats(self, topic: str = "", dry_run: bool = False) -> int | None:
         now = Utils.get_timestamp()
 
-        last_value = cls.get_last_value()
+        last_value = self.get_last_value()
 
-        actual_value = cls.read_value_from_gas_meter()
+        actual_value = self.read_value_from_gas_meter()
         diff_between_measures = actual_value - last_value.get(Fields.TOTAL.value, "0")
 
-        print(f"last:{last_value}, actual:{actual_value}, diff:{diff_between_measures}")
+        logger.debug("last:%s, actual:%s, diff:%s", last_value, actual_value, diff_between_measures)
 
         if not -15 <= diff_between_measures < 15:
-            print("Out of tolerance")
+            logger.warning("Gas meter difference is out of tolerance")
             return 0
 
         daily_usage = (
             diff_between_measures
-            if cls.start_a_new_cycle(DT_ITEMS.DAY, last_value)
+            if self.start_a_new_cycle(DT_ITEMS.DAY, last_value)
             else diff_between_measures + last_value.get(Fields.DAILY_USAGE.value, 0)
         )
         monthly_usage = (
             diff_between_measures
-            if cls.start_a_new_cycle(DT_ITEMS.MONTH, last_value)
+            if self.start_a_new_cycle(DT_ITEMS.MONTH, last_value)
             else diff_between_measures + last_value.get(Fields.MONTHLY_USAGE.value, 0)
         )
         yearly_usage = (
             diff_between_measures
-            if cls.start_a_new_cycle(DT_ITEMS.YEAR, last_value)
+            if self.start_a_new_cycle(DT_ITEMS.YEAR, last_value)
             else diff_between_measures + last_value.get(Fields.YEARLY_USAGE.value, 0)
         )
 
@@ -311,30 +342,27 @@ class Gas(Vision):
             Fields.TIMESTAMP.value: now.strftime(Utils.TIMESTAMP_FORMAT),
         }
 
-        print(topic, data)
-        cls.mqtt.publish(topic=topic or cls.topic, msg=json.dumps(data))
+        if dry_run:
+            print(json.dumps(data, indent=2))
+        else:
+            self.publish_data(topic or self.topic, data)
         return None
 
     @staticmethod
     def get_tolerance(last_value: dict = {}, _diff_between_measures: float = 0.0) -> float:
-        last = datetime.strptime(
-            last_value.get(Fields.TIMESTAMP.value), Utils.TIMESTAMP_FORMAT
-        )
+        last = datetime.strptime(last_value.get(Fields.TIMESTAMP.value), Utils.TIMESTAMP_FORMAT)
         now = datetime.now()
 
         diff = float((now - last).total_seconds() / 3600)
 
         return diff * 1
 
-    @classmethod
-    def get_last_value(cls) -> dict:
-        return cls.mqtt.get_last_message(cls.topic)
+    def get_last_value(self) -> dict:
+        return self.get_last_message(self.topic)
 
     @classmethod
     def start_a_new_cycle(cls, dt_item: DT_ITEMS = DT_ITEMS.DAY, last_value: dict = {}) -> bool:
-        last = datetime.strptime(
-            last_value.get(Fields.TIMESTAMP.value), Utils.TIMESTAMP_FORMAT
-        )
+        last = datetime.strptime(last_value.get(Fields.TIMESTAMP.value), Utils.TIMESTAMP_FORMAT)
         now = datetime.now()
 
         if cls.on_the_same_dt_item(dt_item, last, now):
@@ -343,9 +371,7 @@ class Gas(Vision):
         return True
 
     @classmethod
-    def on_the_same_dt_item(
-        cls, dt_item: DT_ITEMS, past: datetime, now: datetime
-    ) -> bool:
+    def on_the_same_dt_item(cls, dt_item: DT_ITEMS, past: datetime, now: datetime) -> bool:
         if dt_item == DT_ITEMS.DAY:
             return past.day == now.day
 
@@ -359,15 +385,36 @@ class Gas(Vision):
 
 
 if __name__ == "__main__":
-    # x: 700, y: 1000
-    # x: 1815, y: 1345
+    parser = argparse.ArgumentParser(description="Send gas meter data and sensor config to MQTT for Home Assistant.")
+    parser.add_argument(
+        "--send_config",
+        action="store_true",
+        default=False,
+        help="Publish Home Assistant entity config payloads for gas sensors.",
+    )
+    parser.add_argument(
+        "--send_data",
+        action="store_true",
+        default=False,
+        help="Read the current gas meter value and publish updated statistics.",
+    )
+    parser.add_argument(
+        "--dry_run",
+        action="store_true",
+        help="Print gas statistics to stdout instead of publishing them; use with --send_data",
+    )
+    args = parser.parse_args()
 
-    Gas.mqtt.connect_mqtt()
+    publisher = Gas()
+    should_connect = args.send_config or (args.send_data and not args.dry_run)
+    if should_connect:
+        publisher.connect_mqtt()
 
-    # Gas.mqtt.publish( "homeassistant/sensor/gas/total_usage/config", json.dumps( Gas.total_config ) )
-    # Gas.mqtt.publish( "homeassistant/sensor/gas/daily_usage/config", json.dumps( Gas.daily_config ) )
-    # Gas.mqtt.publish( "homeassistant/sensor/gas/monthly_usage/config", json.dumps( Gas.monthly_config ) )
-    # Gas.mqtt.publish( "homeassistant/sensor/gas/yearly_usage/config", json.dumps( Gas.yearly_config ) )
+    if args.send_config:
+        publisher.publish_config()
 
-    Gas.publish_gas_stats()
-    Gas.mqtt.disconnect()
+    if args.send_data:
+        publisher.publish_gas_stats(dry_run=args.dry_run)
+
+    if should_connect:
+        publisher.disconnect()

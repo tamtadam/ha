@@ -1,0 +1,10 @@
+Metadata-Version: 2.4
+Name: HomeAssistantPackages
+Version: 1.0.0
+Summary: HomeAssistantPackages
+Author: 
+Author-email: 
+Requires-Dist: paho-mqtt
+Requires-Dist: psutil
+Dynamic: requires-dist
+Dynamic: summary

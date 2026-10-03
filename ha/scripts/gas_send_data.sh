@@ -1,0 +1,2 @@
+#!/bin/bash
+python ~/PROD/ha/scripts/gas.py --send_data >> ~/PROD/ha/scripts/log_gas.txt 2>&1

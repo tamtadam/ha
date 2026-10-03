@@ -136,16 +136,12 @@ class Mypsutil:
                     ]
                 )
                 if info.get("cpu_percent", 0) or 0 > 100:
-                    info["cpu_percent"] = (
-                        info["cpu_percent"] / psutil.cpu_count()
-                    )  # Normalizálás a magok számával
+                    info["cpu_percent"] = info["cpu_percent"] / psutil.cpu_count()  # Normalizálás a magok számával
                     processes_info.append(info)
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 pass
 
-        processes_info = sorted(
-            processes_info, key=lambda proc: proc["cpu_percent"], reverse=True
-        )
+        processes_info = sorted(processes_info, key=lambda proc: proc["cpu_percent"], reverse=True)
 
         top5_processes: list = []
         for proc in processes_info[:5]:
@@ -214,15 +210,11 @@ class Mypsutil:
         global initial_net_io_counters
         net_io_counters = psutil.net_io_counters()
         bytes_recv = round(
-            (net_io_counters.bytes_recv - initial_net_io_counters.bytes_recv)
-            / 1024.0
-            / 1024.0,
+            (net_io_counters.bytes_recv - initial_net_io_counters.bytes_recv) / 1024.0 / 1024.0,
             1,
         )
         bytes_sent = round(
-            (net_io_counters.bytes_sent - initial_net_io_counters.bytes_sent)
-            / 1024.0
-            / 1024.0,
+            (net_io_counters.bytes_sent - initial_net_io_counters.bytes_sent) / 1024.0 / 1024.0,
             1,
         )
         initial_net_io_counters = net_io_counters
@@ -233,7 +225,7 @@ class Mypsutil:
 
     @staticmethod
     def cpu_times_percent() -> dict[str, float]:
-        cpu_times = psutil.cpu_times_percent()
+        cpu_times = psutil.cpu_times_percent(interval=3.0)
         if os.name == "nt":
             return {
                 Fields.USER.value: cpu_times.user,
@@ -246,14 +238,12 @@ class Mypsutil:
             Fields.NICE.value: cpu_times.nice,
             Fields.SYSTEM.value: cpu_times.system,
             Fields.IDLE.value: cpu_times.idle,
-            Fields.IOWAIT.value: hasattr(cpu_times, "iowait")
-            and cpu_times.iowait
-            or 0,
+            Fields.IOWAIT.value: hasattr(cpu_times, "iowait") and cpu_times.iowait or 0,
         }
 
     @staticmethod
     def cpu_percent() -> float:
-        return psutil.cpu_percent()
+        return psutil.cpu_percent(interval=2.0)
 
     @staticmethod
     def write_speed() -> dict[str, float]:
