@@ -162,9 +162,9 @@ class Mypsutil:
     def memory() -> dict[str, float]:
         memory = psutil.virtual_memory()
 
-        available = round(memory.available / 1024.0 / 1024.0 / 1024.0, 1)
-        total = round(memory.total / 1024.0 / 1024.0 / 1024.0, 1)
-        used = round(memory.used / 1024.0 / 1024.0 / 1024.0, 1)
+        available = round(memory.available / 1024.0 / 1024.0 / 1024.0, 3)
+        total = round(memory.total / 1024.0 / 1024.0 / 1024.0, 3)
+        used = round(memory.used / 1024.0 / 1024.0 / 1024.0, 3)
 
         return {
             Fields.AVAILABLE.value: available,
@@ -177,9 +177,9 @@ class Mypsutil:
     def disk_info() -> dict[str, float]:
         disk = psutil.disk_usage("/")
 
-        available = round(disk.free / 1024.0 / 1024.0 / 1024.0, 1)
-        total = round(disk.total / 1024.0 / 1024.0 / 1024.0, 1)
-        used = round(disk.used / 1024.0 / 1024.0 / 1024.0, 1)
+        available = round(disk.free / 1024.0 / 1024.0 / 1024.0, 3)
+        total = round(disk.total / 1024.0 / 1024.0 / 1024.0, 3)
+        used = round(disk.used / 1024.0 / 1024.0 / 1024.0, 3)
         return {
             Fields.AVAILABLE.value: available,
             Fields.TOTAL.value: total,

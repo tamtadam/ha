@@ -36,6 +36,8 @@ class SensorConfig:
         *,
         state_topic: str | None = None,
         state_class: str | None = "measurement",
+        unique_id: str | None = None,
+        default_entity_id: str | None = None,
         device_name: str | None = None,
         identifiers: list[str] | None = None,
         include_host_name: bool = True,
@@ -48,18 +50,20 @@ class SensorConfig:
         uid = Utils.get_unique_id([str(f.value) if hasattr(f, "value") else str(f) for f in fields])
 
         self.name = f"{Utils.get_host_name()} {name}" if include_host_name else name
-        self.unique_id = uid
-        self.object_id = uid
+        self.unique_id = unique_id if unique_id is not None else uid
+        self.object_id = self.unique_id
+        if default_entity_id is not None:
+            self.default_entity_id = default_entity_id
         self.state_class = state_class
         self.state_topic = state_topic or f"rpi/{Utils.NAME()}/hardware"
         self.platform = "mqtt"
         self.unit_of_measurement = unit if unit is not None else source.unit_of_measurement
         self.value_template = f"{{{{ value_json.{path} }}}}"
         self.device = {
-            "name": device_name or model,
+            "name": f"{device_name or model}/{Utils.get_host_name()}",
             "manufacturer": "RPi",
             "model": model,
-            "identifiers": identifiers or [Utils.get_mac_address(), model],
+            "identifiers": identifiers or [Utils.get_mac_address()],
         }
 
         resolved_dc = device_class if device_class is not None else getattr(source, "device_class", None)

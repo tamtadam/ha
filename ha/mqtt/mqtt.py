@@ -1,9 +1,9 @@
 from typing import Any
 
 from paho.mqtt import client as mqtt_client
-import paho.mqtt.subscribe as subscribe
 import json
 import os
+import threading
 
 
 class MQTT:
@@ -98,9 +98,7 @@ class MQTT:
             else:
                 print("Failed to connect, return code %d\n", rc)
 
-        self.client = mqtt_client.Client(
-            callback_api_version=mqtt_client.CallbackAPIVersion.VERSION2
-        )
+        self.client = mqtt_client.Client(callback_api_version=mqtt_client.CallbackAPIVersion.VERSION2)
         self.client.username_pw_set(self.username, self.password)
         self.client.on_connect = on_connect
         self.client.connect(self.broker, self.port)
@@ -129,12 +127,68 @@ class MQTT:
         self.client.on_message = on_message
 
     def get_last_message(self, topic: str = "") -> dict:
-        data = subscribe.simple(
-            topics=topic or self.topic,
-            hostname=self.broker,
-            port=self.port,
+        target_topic = topic or self.topic
+        if not target_topic:
+            raise ValueError("An MQTT topic is required to retrieve the last message")
+
+        message: dict | None = None
+        error: str | None = None
+        received = threading.Event()
+
+        def on_connect(
+            client: mqtt_client.Client,
+            _userdata: Any,
+            _flags: dict,
+            reason_code: Any,
+            _properties: Any,
+        ) -> None:
+            nonlocal error
+            if reason_code != 0:
+                error = f"MQTT connection failed: {reason_code}"
+                received.set()
+                return
+
+            result, _ = client.subscribe(target_topic)
+            if result != mqtt_client.MQTT_ERR_SUCCESS:
+                error = f"Failed to subscribe to MQTT topic {target_topic}: {result}"
+                received.set()
+
+        def on_message(
+            _client: mqtt_client.Client,
+            _userdata: Any,
+            msg: mqtt_client.MQTTMessage,
+        ) -> None:
+            nonlocal error, message
+            try:
+                payload = json.loads(msg.payload.decode())
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                error = f"Invalid JSON received on MQTT topic {target_topic}: {exc}"
+                received.set()
+                return
+
+            if not isinstance(payload, dict):
+                error = f"Expected a JSON object on MQTT topic {target_topic}"
+            else:
+                message = payload
+            received.set()
+
+        client = mqtt_client.Client(
+            callback_api_version=mqtt_client.CallbackAPIVersion.VERSION2,
             client_id=self.client_id + "_",
-            auth={"username": self.username, "password": self.password},
-            clean_session=False,
         )
-        return data and json.loads(data.payload.decode())
+        client.username_pw_set(self.username, self.password)
+        client.on_connect = on_connect
+        client.on_message = on_message
+        client.connect(self.broker, self.port)
+        client.loop_start()
+        try:
+            if not received.wait(timeout=10):
+                raise TimeoutError(f"No message received on MQTT topic {target_topic} within 10 seconds")
+            if error is not None:
+                raise RuntimeError(error)
+            if message is None:
+                raise RuntimeError(f"No valid message received on MQTT topic {target_topic}")
+            return message
+        finally:
+            client.disconnect()
+            client.loop_stop()

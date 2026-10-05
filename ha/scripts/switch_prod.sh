@@ -34,7 +34,7 @@ else
 fi
 
 printf 'Installing package from %s\n' "$target_dir"
-(cd -- "$target_dir" && python3 -m pip install -e . --break-system-packages)
+(cd -- "$target_dir" && "${PYTHON_BIN:-python3}" -m pip install -e . --break-system-packages)
 
 temp_dir=$(mktemp -d "$HOME/.PROD-switch.XXXXXX")
 trap 'rm -rf -- "$temp_dir"' EXIT
@@ -59,3 +59,5 @@ printf 'Updated crontab: RPi publisher runs every 10 minutes\n'
 if [[ "$configure_gas" == true ]]; then
     printf 'Updated crontab: Gas publisher runs at minute 15 every hour\n'
 fi
+
+chmod 755 "$target_dir"/ha/scripts/*.sh

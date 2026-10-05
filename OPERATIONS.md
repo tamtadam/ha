@@ -16,26 +16,33 @@ A verzióváltó a checkout gyökerét kéri argumentumként:
 ~/ha/ha/scripts/switch_prod.sh "$HOME/ha"
 ```
 
-A script editable módban telepíti a csomagot (`python3 -m pip install -e . --break-system-packages`), átállítja a `~/PROD` symlinket, frissíti az RPi cron sort, és interaktív futtatáskor rákérdez a Gas cron felvételére. Nem ír felül valódi fájlt vagy könyvtárat `~/PROD` helyén.
+A script editable módban telepíti a csomagot (`${PYTHON_BIN:-python3} -m pip install -e . --break-system-packages`), átállítja a `~/PROD` symlinket, frissíti az RPi cron sort, és interaktív futtatáskor rákérdez a Gas cron felvételére. Nem ír felül valódi fájlt vagy könyvtárat `~/PROD` helyén.
 
-A normál wrapper-ek `python` parancsot használnak, a verzióváltó jelenleg `python3`-at. Ezeknek ugyanarra a Python interpreterre kell mutatniuk, különben a wrapper egy régi editable telepítést tölthet be. Ellenőrzés:
+A shell scriptek alapértelmezés szerint `python3`-at használnak. Másik interpreter megadásához állítsd be a `PYTHON_BIN` környezeti változót; ugyanazt használd telepítéskor és futtatáskor, hogy a szükséges csomagok a megfelelő interpreterhez települjenek:
 
 ```sh
-python -c 'import sys; print(sys.executable)'
-python3 -c 'import sys; print(sys.executable)'
+PYTHON_BIN=python3.14 ~/ha/ha/scripts/switch_prod.sh "$HOME/ha"
+PYTHON_BIN=python3.14 ~/PROD/ha/scripts/rpi_psutils_send_data.sh
 ```
 
-Ha eltérnek, telepítsd a checkoutot a wrapper által használt interpreterrel:
+Tartós, rendszer-szintű beállításhoz az `/etc/environment` fájlba vedd fel a változót (az interpreter teljes elérési útjával):
+
+```text
+PYTHON_BIN=/usr/bin/python3.14
+```
+
+Az `/etc/environment` módosításához rendszergazdai jogosultság kell; az új érték új bejelentkezés után lép életbe. A cron nem minden rendszeren tölti be ezt a fájlt, ezért cronhoz a `PYTHON_BIN`-t a crontabban is add meg (lásd az alábbi ütemezési példát).
+
+Ha nincs megadva, a scriptek `python3`-at használnak. Az interpreter ellenőrzése:
 
 ```sh
-cd "$HOME/PROD"
-python -m pip install -e . --break-system-packages
+python3 -c 'import sys; print(sys.executable)'
 ```
 
 Az import tényleges forrásának ellenőrzése:
 
 ```sh
-python -c 'import ha.utils.utils; print(ha.utils.utils.__file__)'
+python3 -c 'import ha.utils.utils; print(ha.utils.utils.__file__)'
 ```
 
 Ennek a `~/PROD/ha/utils/utils.py` fájlra kell mutatnia, nem egy korábbi checkoutra.
@@ -200,15 +207,19 @@ A wrapper-ek a `~/PROD` symlinket használják, ezért verzióváltás után is 
 | `ha/scripts/gas.sh` | Régi rövid Gas alias, adatküldés |
 
 A dry-run wrapper-ek nem irányítják át az stdout-ot, így a JSON megjelenik a terminálban. A normál RPi és Gas logok a `~/PROD/ha/scripts/log_rpi.txt`, illetve `~/PROD/ha/scripts/log_gas.txt` fájlba kerülnek.
+Az RPi szenzorok discovery konfigurációjának módosítása után futtasd egyszer a `~/PROD/ha/scripts/rpi_psutils_send_data_and_config.sh` scriptet; a tízpercenkénti cron csak adatot küld.
 
 ## Ütemezés crontabbal
 
 A verzióváltó az RPi sort tízpercenkéntire állítja. Ha a Gas cron beállítására igennel válaszolsz, a Gas futás óránként a 15. percben történik:
 
 ```cron
+PYTHON_BIN=/usr/bin/python3.14
 */10 * * * * /bin/bash "$HOME/PROD/ha/scripts/rpi_psutils_send_data.sh"
 15 * * * * /bin/bash "$HOME/PROD/ha/scripts/gas_send_data.sh"
 ```
+
+A crontabot a `crontab -e` paranccsal szerkesztheted; a `PYTHON_BIN` sort a futtatási sorok elé tedd, `export` nélkül. Cseréld le `/usr/bin/python3.14` értéket azon a gépen ellenőrzött Python-útvonalra (például `command -v python3.14` kimenetére). Ez a beállítás a sor alatti cron feladatokra érvényes. Ha a változót kihagyod, a scriptek alapértelmezés szerint `python3`-at használnak.
 
 A beállítás felhasználónként különálló. A verzióváltót azon a felhasználón futtasd, amelyiknek a cronját módosítani szeretnéd; `sudo` nélkül. Ha a Gas kérdésre `N`-t vagy Entert válaszolsz, a telepítő a meglévő Gas cron bejegyzést változatlanul meghagyja.
 

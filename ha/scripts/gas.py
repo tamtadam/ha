@@ -206,7 +206,20 @@ class Vision:
             height=24,
             new_color=get_color(image_path, 1000, 1491),
         )  # Red color in RGBA format
-        image_path = crop_region(image_path, 780, 990, 2020, 1230, image_path)
+        with Image.open(image_path) as image:
+            width, height = image.size
+
+        image_path = crop_region(
+            image_path,
+            left=round(width * 0.255),
+            top=round(height * 0.425),
+            right=round(width * 0.75),
+            bottom=round(height * 0.52),
+            output_path=image_path,
+        )
+        with Image.open(image_path) as image:
+            image.rotate(0.7, resample=Image.BICUBIC, expand=True).save(image_path)
+
         cls.create_latest_symlink(image_path)
         return image_path
 
@@ -244,6 +257,9 @@ class Gas(BaseSensorPublisher, Vision):
         source=base_config,
         state_class="total_increasing",
         include_host_name=False,
+        state_topic=topic,
+        unique_id=Utils.get_unique_id([Fields.TOTAL.value]),
+        default_entity_id="sensor.gas_total",
     )
     daily_config = SensorConfig(
         "Gas Daily",
@@ -251,6 +267,9 @@ class Gas(BaseSensorPublisher, Vision):
         source=base_config,
         state_class="measurement",
         include_host_name=False,
+        state_topic=topic,
+        unique_id=Utils.get_unique_id([Fields.DAILY_USAGE.value]),
+        default_entity_id="sensor.gas_daily",
     )
     monthly_config = SensorConfig(
         "Gas Monthly",
@@ -258,6 +277,9 @@ class Gas(BaseSensorPublisher, Vision):
         source=base_config,
         state_class="measurement",
         include_host_name=False,
+        state_topic=topic,
+        unique_id=Utils.get_unique_id([Fields.MONTHLY_USAGE.value]),
+        default_entity_id="sensor.gas_monthly",
     )
     yearly_config = SensorConfig(
         "Gas Yearly",
@@ -265,6 +287,9 @@ class Gas(BaseSensorPublisher, Vision):
         source=base_config,
         state_class="measurement",
         include_host_name=False,
+        state_topic=topic,
+        unique_id=Utils.get_unique_id([Fields.YEARLY_USAGE.value]),
+        default_entity_id="sensor.gas_yearly",
     )
 
     sensor_configs = [total_config, daily_config, monthly_config, yearly_config]
@@ -285,15 +310,15 @@ class Gas(BaseSensorPublisher, Vision):
     @classmethod
     def read_value_from_img(cls, image_name: str = None, image_path: str = None) -> float:
         text = super().read_value_from_img(image_name=image_name, image_path=image_path)
-
+        print("OCR raw text:", text)
         text = text.replace(" ", "")
         text = text.replace(",", "")
         text = text.replace("-", "")
-        logger.debug("OCR text: %s", text)
+        logger.info("OCR text: %s", text)
 
         meter = re.findall(r"0(\d\d\d\d.?\d\d?\d?.?)m?", text)[0]
         meter = "".join(re.findall(r"\d", meter))
-        logger.debug("Parsed meter: %s", meter)
+        logger.info("Parsed meter: %s", meter)
         meter = re.findall(r"(\d\d\d\d)(\d\d?\d?)", meter)[0]
         return float(int(meter[0]) + (int(meter[1]) / math.pow(10, len(meter[1]))))
 
@@ -307,8 +332,18 @@ class Gas(BaseSensorPublisher, Vision):
     def publish_gas_stats(self, topic: str = "", dry_run: bool = False) -> int | None:
         now = Utils.get_timestamp()
 
-        last_value = self.get_last_value()
-
+        last_value: dict = {}
+        try:
+            last_value = self.get_last_value()
+        except Exception as e:
+            logger.warning("Failed to get last value: %s", e)
+            last_value = {
+                Fields.TOTAL.value: 4505.3,
+                Fields.DAILY_USAGE.value: 0.1,
+                Fields.MONTHLY_USAGE.value: 0.11,
+                Fields.YEARLY_USAGE.value: 226,
+                Fields.TIMESTAMP.value: "2026-10-03 18:42",
+            }
         actual_value = self.read_value_from_gas_meter()
         diff_between_measures = actual_value - last_value.get(Fields.TOTAL.value, "0")
 
