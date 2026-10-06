@@ -19,6 +19,8 @@ import io
 import os
 import re
 import math
+import base64
+import mimetypes
 import subprocess
 import argparse
 import json
@@ -31,6 +33,7 @@ from enum import Enum, auto
 # pip3 install google-cloud-vision
 # pip3 install --upgrade google-api-python-client
 
+from google import genai
 from google.cloud import vision
 from datetime import datetime
 from ha.publishers.base_sensor_publisher import BaseSensorPublisher
@@ -49,6 +52,7 @@ else:
         "GOOGLE_APPLICATION_CREDENTIALS_PATH",
         os.path.abspath(os.path.join(os.path.expanduser("~"), "data", "key.json")),
     )
+
     os.environ["GRPC_DNS_RESOLVER"] = "native"
 
 
@@ -141,6 +145,38 @@ class DT_ITEMS(Enum):
 
 class Vision:
     vision_client = vision.ImageAnnotatorClient()
+
+    @staticmethod
+    def get_gemini_text(
+        image_path: str,
+        model: str = "gemini-3.1-flash-lite",
+    ) -> str:
+        mime_type, _ = mimetypes.guess_type(image_path)
+        if mime_type is None or not mime_type.startswith("image/"):
+            raise ValueError(f"Cannot determine image MIME type from path: {image_path}")
+
+        with open(image_path, "rb") as image_file:
+            image_data = base64.b64encode(image_file.read()).decode("ascii")
+
+        with genai.Client() as client:
+            interaction = client.interactions.create(
+                model=model,
+                input=[
+                    {
+                        "type": "text",
+                        "text": "Read the text in this image. Return only the text you can read.",
+                    },
+                    {
+                        "type": "image",
+                        "data": image_data,
+                        "mime_type": mime_type,
+                    },
+                ],
+            )
+
+        if interaction.output_text is None:
+            raise RuntimeError("Gemini returned no text for the image")
+        return interaction.output_text
 
     @staticmethod
     def create_latest_symlink(image_path: str) -> str:
@@ -420,6 +456,8 @@ class Gas(BaseSensorPublisher, Vision):
 
 
 if __name__ == "__main__":
+    iamge_path = "/Users/trenyikadam/Downloads/latest (1).jpg"
+    test = Vision.get_gemini_text(iamge_path)
     parser = argparse.ArgumentParser(description="Send gas meter data and sensor config to MQTT for Home Assistant.")
     parser.add_argument(
         "--send_config",

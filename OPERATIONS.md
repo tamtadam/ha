@@ -18,18 +18,21 @@ A verzióváltó a checkout gyökerét kéri argumentumként:
 
 A script editable módban telepíti a csomagot (`${PYTHON_BIN:-python3} -m pip install -e . --break-system-packages`), átállítja a `~/PROD` symlinket, frissíti az RPi cron sort, és interaktív futtatáskor rákérdez a Gas cron felvételére. Nem ír felül valódi fájlt vagy könyvtárat `~/PROD` helyén.
 
-A shell scriptek alapértelmezés szerint `python3`-at használnak. Másik interpreter megadásához állítsd be a `PYTHON_BIN` környezeti változót; ugyanazt használd telepítéskor és futtatáskor, hogy a szükséges csomagok a megfelelő interpreterhez települjenek:
+A shell scriptek alapértelmezés szerint `python3`-at használnak. Másik interpreter megadásakor a `PYTHON_BIN`-ben a Python teljes elérési útját add meg, ne csak a parancs nevét. Az útvonalat a `which` paranccsal kérdezheted le, például `which python3.14`. Ugyanazt az útvonalat használd telepítéskor és futtatáskor, hogy a szükséges csomagok a megfelelő interpreterhez települjenek:
 
 ```sh
-PYTHON_BIN=python3.14 ~/ha/ha/scripts/switch_prod.sh "$HOME/ha"
-PYTHON_BIN=python3.14 ~/PROD/ha/scripts/rpi_psutils_send_data.sh
+which python3.14
+PYTHON_BIN=/usr/local/bin/python3.14 ~/ha/ha/scripts/switch_prod.sh "$HOME/ha"
+PYTHON_BIN=/usr/local/bin/python3.14 ~/PROD/ha/scripts/rpi_psutils_send_data.sh
 ```
 
-Tartós, rendszer-szintű beállításhoz az `/etc/environment` fájlba vedd fel a változót (az interpreter teljes elérési útjával):
+Az `/usr/local/bin/python3.14` csak példa: cseréld a `which python3.14` kimenetére. Tartós, rendszer-szintű beállításhoz ugyanezt a teljes útvonalat vedd fel az `/etc/environment` fájlba:
 
 ```text
-PYTHON_BIN=/usr/bin/python3.14
+PYTHON_BIN=/usr/local/bin/python3.14
 ```
+
+Cseréld a példa útvonalát is a `which python3.14` kimenetére.
 
 Az `/etc/environment` módosításához rendszergazdai jogosultság kell; az új érték új bejelentkezés után lép életbe. A cron nem minden rendszeren tölti be ezt a fájlt, ezért cronhoz a `PYTHON_BIN`-t a crontabban is add meg (lásd az alábbi ütemezési példát).
 
@@ -47,7 +50,7 @@ python3 -c 'import ha.utils.utils; print(ha.utils.utils.__file__)'
 
 Ennek a `~/PROD/ha/utils/utils.py` fájlra kell mutatnia, nem egy korábbi checkoutra.
 
-A `setup.py` deklarálja a `paho-mqtt` és `psutil` csomagokat. A Gas további függőségei: `google-cloud-vision`, Pillow, valamint a rendszerszintű ImageMagick és `rpicam-still`. A `gas.py` fejlécében szereplő kompatibilis Vision telepítési parancs:
+A `setup.py` deklarálja a `paho-mqtt` és `psutil` csomagokat. A Gas további függőségei: `google-cloud-vision`, Pillow, valamint a rendszerszintű ImageMagick és `rpicam-still`. A Gemini Interactions API-t használó OCR-függvényhez a `google-genai` legalább 2.3.0-s verziója szükséges. A `gas.py` fejlécében szereplő kompatibilis Vision telepítési parancs:
 
 ```sh
 python3 -m pip install --break-system-packages \
@@ -56,6 +59,12 @@ python3 -m pip install --break-system-packages \
   "protobuf<4.21" \
   "grpcio<1.60"
 sudo apt install -y imagemagick
+```
+
+Gemini OCR-hez telepítsd külön a GenAI SDK-t:
+
+```sh
+python3 -m pip install "google-genai>=2.3.0"
 ```
 
 A kamerás Gas képfeldolgozás Raspberry Pi-n fut; a `rpicam-still` parancsnak elérhetőnek kell lennie.
@@ -97,6 +106,28 @@ export GOOGLE_APPLICATION_CREDENTIALS_PATH="$HOME/keys/google-vision.json"
 ```
 
 A `gas.py` ebből állítja be a Google könyvtár által használt `GOOGLE_APPLICATION_CREDENTIALS` változót. A kulcsfájl ne kerüljön a repositoryba vagy publikus HTTP könyvtárba. Nem Windows platformon a script a `GRPC_DNS_RESOLVER=native` beállítást is alkalmazza.
+
+## Gemini API hitelesítés
+
+A Gemini API-kulcsot a `GEMINI_API_KEY` környezeti változóban add meg. Ideiglenes, aktuális shellhez:
+
+```sh
+export GEMINI_API_KEY="<Gemini API-kulcs>"
+```
+
+Tartós, rendszer-szintű beállításhoz az `/etc/environment` fájlban `export` nélkül szerepeljen:
+
+```text
+GEMINI_API_KEY=<Gemini API-kulcs>
+```
+
+Cronból indított Gemini-feladathoz ellenőrizd, hogy a cronfolyamat megkapja-e ezt a változót; szükség esetén vedd fel a felhasználó crontabjába a futtatási sorok elé:
+
+```cron
+GEMINI_API_KEY=<Gemini API-kulcs>
+```
+
+A kulcs titkos adat: ne tedd verziókezelésbe, naplóba vagy publikus helyre.
 
 ## Futtatási parancsok
 
@@ -219,7 +250,7 @@ PYTHON_BIN=/usr/bin/python3.14
 15 * * * * /bin/bash "$HOME/PROD/ha/scripts/gas_send_data.sh"
 ```
 
-A crontabot a `crontab -e` paranccsal szerkesztheted; a `PYTHON_BIN` sort a futtatási sorok elé tedd, `export` nélkül. Cseréld le `/usr/bin/python3.14` értéket azon a gépen ellenőrzött Python-útvonalra (például `command -v python3.14` kimenetére). Ez a beállítás a sor alatti cron feladatokra érvényes. Ha a változót kihagyod, a scriptek alapértelmezés szerint `python3`-at használnak.
+A crontabot a `crontab -e` paranccsal szerkesztheted; a `PYTHON_BIN` sort a futtatási sorok elé tedd, `export` nélkül. Cseréld le `/usr/bin/python3.14` értéket a `which python3.14` teljes elérési utat adó kimenetére. Ez a beállítás a sor alatti cron feladatokra érvényes. Ha a változót kihagyod, a scriptek alapértelmezés szerint `python3`-at használnak.
 
 A beállítás felhasználónként különálló. A verzióváltót azon a felhasználón futtasd, amelyiknek a cronját módosítani szeretnéd; `sudo` nélkül. Ha a Gas kérdésre `N`-t vagy Entert válaszolsz, a telepítő a meglévő Gas cron bejegyzést változatlanul meghagyja.
 
