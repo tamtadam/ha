@@ -72,6 +72,8 @@ def main() -> None:
     parser.add_argument("--hostname", type=str, default=None, help="Specify the hostname")
     args = parser.parse_args()
 
+
+
     if args.model:
         Utils.MODEL = args.model
     if args.mac_address:
@@ -80,6 +82,7 @@ def main() -> None:
         Utils.HOSTNAME = args.hostname
 
     publisher = RPi()
+    publisher.publish_data(dry_run=1)
     should_connect = args.send_config or (args.send_data and not args.dry_run)
     if should_connect:
         publisher.connect_mqtt()

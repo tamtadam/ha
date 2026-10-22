@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Raspberry Pi data publisher every ten minutes
+
+[Timer]
+OnCalendar=*-*-* *:0/10:00
+Persistent=true
+Unit=ha-rpi-data.service
+
+[Install]
+WantedBy=timers.target

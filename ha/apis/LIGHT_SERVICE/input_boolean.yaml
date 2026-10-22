@@ -1,0 +1,4 @@
+light_enabled:
+  name: "LIGHT_ENABLED"
+  icon: mdi:power
+  initial: true

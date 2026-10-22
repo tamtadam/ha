@@ -1,0 +1,10 @@
+[Unit]
+Description=Run systemd service state publisher every 25 minutes
+
+[Timer]
+OnBootSec=25min
+OnUnitActiveSec=25min
+Unit=ha-service-status.service
+
+[Install]
+WantedBy=timers.target

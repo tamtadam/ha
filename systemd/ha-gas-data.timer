@@ -1,0 +1,10 @@
+[Unit]
+Description=Run gas meter data publisher hourly
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+Unit=ha-gas-data.service
+
+[Install]
+WantedBy=timers.target

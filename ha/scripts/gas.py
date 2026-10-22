@@ -284,7 +284,6 @@ class Gas(BaseSensorPublisher, Vision):
             Utils.detect_model(),
             Utils.get_host_name(),
         ],
-        include_host_name=False,
     )
 
     total_config = SensorConfig(
@@ -292,7 +291,6 @@ class Gas(BaseSensorPublisher, Vision):
         [Fields.TOTAL],
         source=base_config,
         state_class="total_increasing",
-        include_host_name=False,
         state_topic=topic,
         unique_id=Utils.get_unique_id([Fields.TOTAL.value]),
         default_entity_id="sensor.gas_total",
@@ -302,7 +300,6 @@ class Gas(BaseSensorPublisher, Vision):
         [Fields.DAILY_USAGE],
         source=base_config,
         state_class="measurement",
-        include_host_name=False,
         state_topic=topic,
         unique_id=Utils.get_unique_id([Fields.DAILY_USAGE.value]),
         default_entity_id="sensor.gas_daily",
@@ -312,7 +309,6 @@ class Gas(BaseSensorPublisher, Vision):
         [Fields.MONTHLY_USAGE],
         source=base_config,
         state_class="measurement",
-        include_host_name=False,
         state_topic=topic,
         unique_id=Utils.get_unique_id([Fields.MONTHLY_USAGE.value]),
         default_entity_id="sensor.gas_monthly",
@@ -322,7 +318,6 @@ class Gas(BaseSensorPublisher, Vision):
         [Fields.YEARLY_USAGE],
         source=base_config,
         state_class="measurement",
-        include_host_name=False,
         state_topic=topic,
         unique_id=Utils.get_unique_id([Fields.YEARLY_USAGE.value]),
         default_entity_id="sensor.gas_yearly",
@@ -345,18 +340,12 @@ class Gas(BaseSensorPublisher, Vision):
 
     @classmethod
     def read_value_from_img(cls, image_name: str = None, image_path: str = None) -> float:
-        text = super().read_value_from_img(image_name=image_name, image_path=image_path)
+        image_path = cls.create_picture(image_name)
+        # text = super().read_value_from_img(image_name=image_name, image_path=image_path)
+        text: str = cls.get_gemini_text(image_path=image_path)
+        meter = re.search(r"0(?P<egesz>\d\d\d\d)(?P<tizedes>\d\d\d)(?P<fel>\d)?", text)
         print("OCR raw text:", text)
-        text = text.replace(" ", "")
-        text = text.replace(",", "")
-        text = text.replace("-", "")
-        logger.info("OCR text: %s", text)
-
-        meter = re.findall(r"0(\d\d\d\d.?\d\d?\d?.?)m?", text)[0]
-        meter = "".join(re.findall(r"\d", meter))
-        logger.info("Parsed meter: %s", meter)
-        meter = re.findall(r"(\d\d\d\d)(\d\d?\d?)", meter)[0]
-        return float(int(meter[0]) + (int(meter[1]) / math.pow(10, len(meter[1]))))
+        return int(meter.group("egesz")) + int(meter.group("tizedes")) / 1000 + (0.0005 if meter.group("fel") else 0)
 
     @classmethod
     def read_value_from_gas_meter(cls) -> float:
@@ -456,8 +445,6 @@ class Gas(BaseSensorPublisher, Vision):
 
 
 if __name__ == "__main__":
-    iamge_path = "/Users/trenyikadam/Downloads/latest (1).jpg"
-    test = Vision.get_gemini_text(iamge_path)
     parser = argparse.ArgumentParser(description="Send gas meter data and sensor config to MQTT for Home Assistant.")
     parser.add_argument(
         "--send_config",

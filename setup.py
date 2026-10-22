@@ -24,7 +24,7 @@ setup(
     version=version if version != "dev" else "0.0.0.dev0",
     author_email="",
     packages=find_packages(include=("ha", "ha.*")),
-    install_requires=["paho-mqtt", "psutil"],
+    install_requires=["homeassistant-api", "paho-mqtt", "psutil", "transitions", "matplotlib", "websocket-client"],
     package_data={
         "": ["**/*.j2", "**/*.yml", "**/*.yaml"],
     },

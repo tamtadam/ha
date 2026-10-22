@@ -274,3 +274,4 @@ if __name__ == "__main__":
 
     stats = Mypsutil.get_all_stat()
     print(json.dumps(stats, indent=4))
+

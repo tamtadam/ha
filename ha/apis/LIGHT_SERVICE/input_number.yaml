@@ -1,0 +1,27 @@
+light_set_brightness:
+  name: "LIGHT_SET_BRIGHTNESS"
+  icon: mdi:brightness-6
+  initial: 50
+  min: 0
+  max: 100
+  step: 1
+  mode: slider
+
+light_target_lux:
+  name: "LIGHT_TARGET_LUX"
+  icon: mdi:sun-wireless
+  initial: 300
+  min: 0
+  max: 1000
+  step: 10
+  mode: box
+
+
+light_corrected_illuminance:
+  name: "LIGHT_CORRECTED_ILLUMINANCE"
+  icon: mdi:sun-wireless
+  initial: 300
+  min: 0
+  max: 1000
+  step: 1
+  mode: box

@@ -30,7 +30,7 @@ class RPi:
         + f"{Fields.TEMPERATURE.value}.{Fields.CPU.value}.{Fields.CORE_1.value}"
         + " }}",
         "device": {
-            "name": Utils.detect_model(),
+            "name": Utils.get_host_name(),
             "manufacturer": "RPi",
             "model": Utils.detect_model(),
             "identifiers": [Utils.get_mac_address(), Utils.detect_model()],

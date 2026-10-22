@@ -1,0 +1,16 @@
+[Unit]
+Description=Serve the latest gas meter image over HTTP
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=trenyik
+EnvironmentFile=-/etc/environment
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/bin/bash -c 'exec "${PYTHON_BIN:-/usr/bin/python3}" -m http.server 8000 --bind 0.0.0.0 --directory /var/tmp/vision'
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

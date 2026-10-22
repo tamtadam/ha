@@ -40,27 +40,27 @@ class SensorConfig:
         default_entity_id: str | None = None,
         device_name: str | None = None,
         identifiers: list[str] | None = None,
-        include_host_name: bool = True,
     ) -> None:
-        if unit is None and source is None:
-            raise ValueError(f"SensorConfig '{name}': unit or source must be provided")
+        if unit is None and source is None and state_class is not None:
+            raise ValueError(f"SensorConfig '{name}': unit or source must be provided unless state_class is None")
 
         model = Utils.detect_model()
         path = ".".join(str(f.value) if hasattr(f, "value") else str(f) for f in fields)
         uid = Utils.get_unique_id([str(f.value) if hasattr(f, "value") else str(f) for f in fields])
 
-        self.name = f"{Utils.get_host_name()} {name}" if include_host_name else name
+        self.name = name
         self.unique_id = unique_id if unique_id is not None else uid
-        self.object_id = self.unique_id
         if default_entity_id is not None:
             self.default_entity_id = default_entity_id
         self.state_class = state_class
         self.state_topic = state_topic or f"rpi/{Utils.NAME()}/hardware"
         self.platform = "mqtt"
-        self.unit_of_measurement = unit if unit is not None else source.unit_of_measurement
+        resolved_unit = unit if unit is not None else getattr(source, "unit_of_measurement", None)
+        if resolved_unit is not None:
+            self.unit_of_measurement = resolved_unit
         self.value_template = f"{{{{ value_json.{path} }}}}"
         self.device = {
-            "name": f"{device_name or model}/{Utils.get_host_name()}",
+            "name": device_name or Utils.get_host_name(),
             "manufacturer": "RPi",
             "model": model,
             "identifiers": identifiers or [Utils.get_mac_address()],
@@ -71,7 +71,7 @@ class SensorConfig:
             self.device_class = resolved_dc
 
     def as_dict(self) -> dict:
-        return {k: v for k, v in self.__dict__.items() if not k.startswith("_")}
+        return {k: v for k, v in self.__dict__.items() if not k.startswith("_") and v is not None}
 
 
 class Utils:

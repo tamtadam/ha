@@ -1,0 +1,14 @@
+[Unit]
+Description=Publish systemd service states to Home Assistant over MQTT
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=trenyik
+WorkingDirectory=/home/trenyik/PROD
+EnvironmentFile=-/etc/environment
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/bin/bash -c 'exec "${PYTHON_BIN:-/usr/bin/python3}" -m ha.scripts.service --send_config --send_data'
+Restart=on-failure
+RestartSec=60

@@ -1,6 +1,8 @@
 from typing import Any
 
 from paho.mqtt import client as mqtt_client
+from paho.mqtt.packettypes import PacketTypes
+from paho.mqtt.properties import Properties
 import json
 import os
 import threading
@@ -15,6 +17,7 @@ class MQTT:
         username: str = os.environ.get("MQTT_USERNAME", "geza"),
         password: str = os.environ.get("MQTT_PASSWORD", "1234"),
         topic: str = None,
+        protocol: int = mqtt_client.MQTTv311,
     ) -> None:
         self.broker = broker
         self.port = port
@@ -23,6 +26,7 @@ class MQTT:
         self.client_id = None
         self.username = username
         self.topic = topic
+        self.protocol = protocol
 
     @property
     def topic(self) -> str | None:
@@ -98,16 +102,23 @@ class MQTT:
             else:
                 print("Failed to connect, return code %d\n", rc)
 
-        self.client = mqtt_client.Client(callback_api_version=mqtt_client.CallbackAPIVersion.VERSION2)
+        self.client = mqtt_client.Client(callback_api_version=mqtt_client.CallbackAPIVersion.VERSION2, protocol=self.protocol)
         self.client.username_pw_set(self.username, self.password)
         self.client.on_connect = on_connect
         self.client.connect(self.broker, self.port)
 
         return self.client
 
-    def publish(self, topic: str, msg: str, retain: bool = True) -> None:
+    def publish(self, topic: str, msg: str, retain: bool = True, message_expiry: int | None = None) -> None:
+        properties = None
+        if message_expiry is not None:
+            if self.protocol != mqtt_client.MQTTv5:
+                raise ValueError("message_expiry requires the MQTT v5 protocol")
+            properties = Properties(PacketTypes.PUBLISH)
+            properties.MessageExpiryInterval = message_expiry
+
         msg_count = 0
-        result = self.client.publish(topic, msg, retain=retain)
+        result = self.client.publish(topic, msg, retain=retain, properties=properties)
 
         # result: [0, 1]
         status = result[0]

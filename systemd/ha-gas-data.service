@@ -1,0 +1,14 @@
+[Unit]
+Description=Publish gas meter data to Home Assistant
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=trenyik
+WorkingDirectory=/home/trenyik/PROD
+EnvironmentFile=-/etc/environment
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/bin/bash -c 'exec "${PYTHON_BIN:-/usr/bin/python3}" -m ha.scripts.gas --send_data'
+Restart=on-failure
+RestartSec=60

@@ -1,0 +1,17 @@
+[Unit]
+Description=Home Assistant illuminance-based kitchen light control
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=trenyik
+WorkingDirectory=/home/trenyik/PROD
+EnvironmentFile=-/etc/environment
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/bin/bash -c 'exec "${PYTHON_BIN:-/usr/bin/python3}" -m ha.apis.LIGHT'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
