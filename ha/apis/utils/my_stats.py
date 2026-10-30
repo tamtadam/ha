@@ -9,7 +9,19 @@ import math
 from pathlib import Path
 import statistics
 import time
-from typing import Generic, Protocol, TypeVar
+from typing import Generic, TypeVar
+
+from ha.apis.utils.filters import (
+    AverageFilter,
+    ExponentialMovingAverageFilter,
+    MeasurementFilter,
+    MedianClipFilter,
+    MovingAverageLowPassFilter,
+    RollingMedianFilter,
+    SavitzkyGolayFilter,
+    WeightedMovingAverageFilter,
+    PolyFit
+)
 
 
 @dataclass(frozen=True)
@@ -37,10 +49,15 @@ class MeasurementStatistics:
     count: int
     average: float
     median: float
+    max_value: float
     slope_per_second: float
     last_corrected_value: float
     last_measured_value: float
-
+    first_measured_value: float
+    time_spent_in_seconds: float
+    total_slope_in_cycle: float
+    first_timestamp: float
+    last_timestamp: float
 
 @dataclass(frozen=True)
 class LuxStatistics(MeasurementStatistics):
@@ -76,136 +93,6 @@ SampleT = TypeVar("SampleT", bound=MeasurementSample)
 StatisticsT = TypeVar("StatisticsT", bound=MeasurementStatistics)
 
 
-class MeasurementFilter(Protocol[SampleT]):
-    def apply(self, samples: Sequence[SampleT]) -> tuple[SampleT, ...]: ...
-
-
-@dataclass(frozen=True)
-class MedianClipFilter(Generic[SampleT]):
-    """Clip each value to a deviation around the preceding window median."""
-
-    window_size: int = 5
-    max_deviation: float = 30.0
-
-    def __post_init__(self) -> None:
-        if self.window_size < 1:
-            raise ValueError("window_size must be at least 1")
-        if not math.isfinite(self.max_deviation) or self.max_deviation <= 0:
-            raise ValueError("max_deviation must be finite and greater than 0")
-
-    def apply(self, samples: Sequence[SampleT]) -> tuple[SampleT, ...]:
-        filtered: list[SampleT] = []
-        baseline = statistics.median([sample.value for sample in samples[-self.window_size:]])
-        for sample in samples[-self.window_size:]:
-            value = sample.value
-            if sample.value < baseline - self.max_deviation:
-                value = baseline - self.max_deviation
-            elif sample.value > baseline + self.max_deviation:
-                value = baseline + self.max_deviation
-            filtered_sample = LuxSample(value=value, timestamp=sample.timestamp)
-            filtered.append(filtered_sample)
-        return tuple(filtered)
-
-
-@dataclass(frozen=True)
-class RollingMedianFilter(Generic[SampleT]):
-    """Replace each value with the median of the trailing sample window."""
-
-    window_size: int = 5
-
-    def __post_init__(self) -> None:
-        if self.window_size < 1:
-            raise ValueError("window_size must be at least 1")
-
-    def apply(self, samples: Sequence[SampleT]) -> tuple[SampleT, ...]:
-        filtered: list[SampleT] = []
-        median = statistics.fmean([sample.value for sample in samples])
-        for sample in samples:
-            filtered.append(replace(sample, value=min(median, sample.value)))
-        return tuple(filtered)
-
-
-@dataclass(frozen=True)
-class MovingAverageLowPassFilter(Generic[SampleT]):
-    """Smooth values with a trailing moving-average window."""
-
-    window_size: int = 5
-
-    def __post_init__(self) -> None:
-        if self.window_size < 1:
-            raise ValueError("window_size must be at least 1")
-
-    def apply(self, samples: Sequence[SampleT]) -> tuple[SampleT, ...]:
-        window: deque[float] = deque(maxlen=self.window_size)
-        filtered: list[SampleT] = []
-        for sample in samples:
-            window.append(sample.value)
-            filtered.append(replace(sample, value=statistics.fmean(window)))
-        return tuple(filtered)
-
-
-@dataclass(frozen=True)
-class AverageFilter(Generic[SampleT]):
-    """Replace sample values with the arithmetic mean of the provided samples."""
-
-    def apply(self, samples: Sequence[SampleT]) -> tuple[SampleT, ...]:
-        if not samples:
-            return ()
-
-        average = statistics.fmean(sample.value for sample in samples)
-        return tuple(replace(sample, value=average) for sample in samples)
-
-
-@dataclass(frozen=True)
-class WeightedMovingAverageFilter(Generic[SampleT]):
-    """Smooth samples with linearly increasing weights for newer values."""
-
-    window_size: int = 5
-
-    def __post_init__(self) -> None:
-        if self.window_size < 1:
-            raise ValueError("window_size must be at least 1")
-
-    def apply(self, samples: Sequence[SampleT]) -> tuple[SampleT, ...]:
-        window: deque[SampleT] = deque(maxlen=self.window_size)
-        filtered: list[SampleT] = []
-        window_total = 0.0
-        weighted_total = 0.0
-        for sample in samples:
-            if len(window) == self.window_size:
-                oldest = window.popleft()
-                weighted_total -= window_total
-                window_total -= oldest.value
-            window.append(sample)
-            window_total += sample.value
-            weighted_total += len(window) * sample.value
-            total_weight = len(window) * (len(window) + 1) / 2
-            filtered.append(replace(sample, value=weighted_total / total_weight))
-        return tuple(filtered)
-
-
-@dataclass(frozen=True)
-class ExponentialMovingAverageFilter(Generic[SampleT]):
-    """Smooth the full input sequence recursively, favoring newer samples."""
-
-    smoothing_factor: float = 0.5
-
-    def __post_init__(self) -> None:
-        if not math.isfinite(self.smoothing_factor) or not 0 < self.smoothing_factor <= 1:
-            raise ValueError("smoothing_factor must be finite and in the interval (0, 1]")
-
-    def apply(self, samples: Sequence[SampleT]) -> tuple[SampleT, ...]:
-        filtered: list[SampleT] = []
-        average: float | None = None
-        for sample in samples:
-            average = sample.value if average is None else (
-                self.smoothing_factor * sample.value
-                + (1 - self.smoothing_factor) * average
-            )
-            filtered.append(replace(sample, value=average))
-        return tuple(filtered)
-
-
 class MeasurementSeries(Generic[SampleT, StatisticsT]):
     """Bounded numeric measurement series with common window statistics."""
 
@@ -229,11 +116,18 @@ class MeasurementSeries(Generic[SampleT, StatisticsT]):
     def filtered_samples(
         self,
         window_size_for_target_adjustment: int = 0,
-        measurement_filter: MeasurementFilter[SampleT] | None = None,
+        measurement_filters: list[MeasurementFilter[SampleT]] | None = None,
     ) -> tuple[SampleT, ...]:
         window_size = window_size_for_target_adjustment or len(self.samples)
         samples = self.samples[-window_size:]
-        filters = (measurement_filter,) if measurement_filter is not None else self.filters
+        if window_size <= 0:
+            return ()
+
+        if measurement_filters is None:
+            filters = self.filters
+        else:
+            filters = measurement_filters
+
         for active_filter in filters:
             samples = active_filter.apply(samples)
         return samples
@@ -263,35 +157,42 @@ class MeasurementSeries(Generic[SampleT, StatisticsT]):
     def statistics(
         self,
         window_size_for_target_adjustment: int = 0,
-        measurement_filter: MeasurementFilter[SampleT] | None = None,
+        measurement_filters: list[MeasurementFilter[SampleT]] | None = None,
     ) -> StatisticsT | None:
         samples = self.filtered_samples(
             window_size_for_target_adjustment=window_size_for_target_adjustment,
-            measurement_filter=measurement_filter,
+            measurement_filters=measurement_filters,
         )
         if not samples:
             return None
 
         average = statistics.fmean(sample.value for sample in samples)
         median = statistics.median(sample.value for sample in samples)
-        mean_time = statistics.fmean(sample.timestamp for sample in samples)
-        denominator = sum((sample.timestamp - mean_time) ** 2 for sample in samples)
-        if denominator == 0:
-            slope = 0.0
-        else:
-            slope = sum(
-                (sample.timestamp - mean_time) * (sample.value - average)
-                for sample in samples
-            ) / denominator
+        max_value = max(sample.value for sample in samples)
+        spend_time_in_seconds = self.samples[-1].timestamp - self.samples[0].timestamp if self.samples else 0.0
+        slope = PolyFit().meredekseg(self.samples[-len(samples):])
 
         return self.statistics_type(
             count=len(samples),
             average=average,
             median=median,
             slope_per_second=slope,
-            last_corrected_value=samples[-1].value,
+            last_corrected_value=median,
             last_measured_value=self.samples[-1].value,
+            first_measured_value=self.samples[0].value,
+            time_spent_in_seconds=spend_time_in_seconds,
+            total_slope_in_cycle = self.samples[-1].value - self.samples[0].value,
+            max_value=max_value,
+            first_timestamp=self.samples[0].timestamp,
+            last_timestamp=self.samples[-1].timestamp,
         )
+    def draw_line_from_start_to_end_by_slop(self, start_value: float, end_value: float, slope_in_the_frame: float, first_timestamp: float, last_timestamp: float, sample_amount: int, time_step: int = 1) -> list[MeasurementSample]:
+        """Generate a line from start to end value based on the given slope."""
+        spend_time_in_seconds = last_timestamp - first_timestamp
+        if sample_amount == 1:
+            return [MeasurementSample(timestamp=first_timestamp, value=start_value)]
+        time_step = time_step if time_step is not None else spend_time_in_seconds / (sample_amount - 1)
+        return [MeasurementSample(timestamp=first_timestamp + t * time_step, value=start_value + (slope_in_the_frame/sample_amount) * t) for t in range(sample_amount)]
 
     def print_to_jpg(
         self,
@@ -309,8 +210,10 @@ class MeasurementSeries(Generic[SampleT, StatisticsT]):
         raw_samples = self.samples
         if reference_samples is not None:
             if len(reference_samples) < len(raw_samples):
-                raise ValueError(
-                    "reference_samples cannot contain fewer values than the raw samples"
+                print(
+                    ValueError(
+                        "reference_samples cannot contain fewer values than the raw samples"
+                    )
                 )
             if len(reference_samples) > len(raw_samples):
                 reference_samples = (
@@ -396,18 +299,62 @@ class TempSampler(MeasurementSampler[TempSample, TempStatistics]):
 
 
 if __name__ == "__main__":
-    history_path = Path(__file__).with_name("history.csv")
+    from datetime import datetime, timedelta
+    history_path = Path("/Users/trenyikadam/Documents/dev/ha/ha/apis/services/kitchenvent/history.csv")
     with history_path.open(newline="", encoding="utf-8") as history_file:
         history = list(csv.DictReader(history_file))
+    TEMPERATURE_WINDOW_SECONDS = 120
+    temperature_series = TempSeries(
+        max_samples=24*60*60,
+        filters=[
+            PolyFit(window_size=TEMPERATURE_WINDOW_SECONDS),
+        ],
+    )
+    history_by_timestamp = {}
+    for row in history:
+        timestamp = datetime.fromisoformat(
+            row["last_changed"].replace("Z", "+00:00")
+        ).timestamp()
+        history_by_timestamp[int(timestamp)] = row
 
+
+    start_dt = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    SECONDS_IN_DAY = 24 * 60 * 60
+    current_state = None
+    reference_samples = []
+    max_value = 0
+    stat_round_table_cnt = 0
+    for s in range(SECONDS_IN_DAY):
+        current_dt = start_dt + timedelta(seconds=s, days=-1)
+        timestamp = current_dt.timestamp()
+        if int(timestamp) in history_by_timestamp:
+            row = history_by_timestamp[int(timestamp)]
+            current_state = float(row["state"])
+        if current_state is not None:
+
+            result = temperature_series.statistics()
+            if result:
+                reference_samples.append(result.median)
+
+            temperature_series.add(current_state, timestamp=timestamp)
+
+            if result and stat_round_table_cnt % 100 == 0:
+                print(f"Timestamp: {datetime.fromtimestamp(timestamp)}, Current state: {current_state}, slope_per_second: {result.slope_per_second}, total_slope_in_cycle: {result.total_slope_in_cycle}")
+            stat_round_table_cnt += 1
+    output_path = temperature_series.print_to_jpg(
+        "temperature_series.jpg",
+        reference_samples=reference_samples + [v.value for v in temperature_series.samples[-400:]],
+    )
     lux_series = LuxSeries(
         max_samples=max(2, len(history)),
         filters=[
-            MedianClipFilter(window_size=400, max_deviation=2.0),
-            MovingAverageLowPassFilter(window_size=300),
+            MedianClipFilter(window_size=TEMPERATURE_WINDOW_SECONDS, max_deviation=0.5),
+            RollingMedianFilter(window_size=TEMPERATURE_WINDOW_SECONDS),
+            MovingAverageLowPassFilter(window_size=TEMPERATURE_WINDOW_SECONDS),
             WeightedMovingAverageFilter(
-                window_size=300
+                window_size=TEMPERATURE_WINDOW_SECONDS
             ),
+            SavitzkyGolayFilter(window_size=TEMPERATURE_WINDOW_SECONDS                                                                                                                                                                                                                                                                                                                                                                                                              ),
         ],
     )
     reference_samples = []

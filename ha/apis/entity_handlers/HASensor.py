@@ -3,7 +3,7 @@ import logging
 from homeassistant_api import Client, State
 from homeassistant_api.errors import EndpointNotFoundError
 
-from ha.apis.HAEntity import HomeAssistantEntity
+from ha.apis.entity_handlers.HAEntity import HomeAssistantEntity
 
 logger = logging.getLogger(__name__)
 

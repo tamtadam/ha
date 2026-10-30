@@ -7,15 +7,17 @@ from ha.apis.HAInput import HomeAssistantInputNumber
 from ha.apis.HALight import HomeAssistantLight
 from ha.apis.HALuminance import HomeAssistantIlluminance
 from ha.apis.light_control import LightControlMachine, LightControlSettings, LightControlState
-from ha.apis.light_measurements import (
+from ha.apis.utils.filters import (
+    AverageFilter,
+    ExponentialMovingAverageFilter,
+    MedianClipFilter,
+    MovingAverageLowPassFilter,
+    WeightedMovingAverageFilter,
+)
+from ha.apis.utils.my_stats import (
     LuxSampler,
     LuxSeries,
     MeasurementStatistics,
-    MedianClipFilter,
-    MovingAverageLowPassFilter,
-    ExponentialMovingAverageFilter,
-    WeightedMovingAverageFilter,
-    AverageFilter
 )
 logging.getLogger("transitions").setLevel(logging.WARNING)
 
@@ -37,7 +39,7 @@ SAMPLE_PERIOD_SECONDS = 1
 LUX_SAMPLE_PERIOD_SECONDS = 1.0
 LIGHT_TRANSITION_TIME = 1.0
 NORMAL_FILTER_WINDOW_SIZE = 1000
-DEADZONE_LUX = 10
+DEADZONE_LUX = 15
 BRIGHTNESS_PERCENT_PER_LUX = 0.5
 MINIMUM_BRIGHTNESS_STEP = 1.0
 MAXIMUM_BRIGHTNESS_STEP = 1.0
@@ -195,7 +197,7 @@ if __name__ == "__main__":
                         now=current_time,
                     )
                     if requested_brightness is not None:
-                        if requested_brightness != current_brightness:
+                        if requested_brightness != current_brightness and current_brightness != 0 and requested_brightness !=1:
                             applied_brightness = light.set_brightness(
                                 requested_brightness,
                                 transition=LIGHT_TRANSITION_TIME,

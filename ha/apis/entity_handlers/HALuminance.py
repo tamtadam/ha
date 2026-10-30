@@ -2,7 +2,7 @@ import logging
 
 from homeassistant_api import Client
 
-from ha.apis.HAEntity import HomeAssistantEntity
+from ha.apis.entity_handlers.HAEntity import HomeAssistantEntity
 
 logger = logging.getLogger(__name__)
 
